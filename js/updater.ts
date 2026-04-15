@@ -2,13 +2,14 @@
 import { check } from '@tauri-apps/plugin-updater';
 import { ask } from '@tauri-apps/plugin-dialog';
 import { relaunch } from '@tauri-apps/plugin-process';
+import Logger from '$utils/log';
 
 export async function checkForAppUpdates(release_url: string) {
 	const update = await check();
 	if (!update) {
-		console.log('No update available');
+		Logger.info('No update available');
 	} else if (update) {
-		console.log('Update available!', update);
+		Logger.info('Update available!', update);
 		const yes = await ask(
 			`Update to ${update.version} is available!\n\nRelease notes: ${release_url}`,
 			{
