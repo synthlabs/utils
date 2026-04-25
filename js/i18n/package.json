@@ -1,0 +1,39 @@
+{
+	"name": "@synthlabs/i18n",
+	"version": "0.1.0",
+	"description": "Shared i18n tooling for Synth Labs apps. Wraps Paraglide JS with our standard config + helpers.",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./locale": "./src/osLocale.ts",
+		"./svelte": "./svelte/index.ts",
+		"./inlang-settings": "./inlang-settings.template.json"
+	},
+	"bin": {
+		"i18n-lint": "./scripts/lint-locales.mjs"
+	},
+	"files": [
+		"src",
+		"svelte",
+		"scripts",
+		"inlang-settings.template.json",
+		"README.md"
+	],
+	"peerDependencies": {
+		"@inlang/paraglide-js": "^2.0.0",
+		"bits-ui": "^2.0.0",
+		"svelte": "^5.0.0",
+		"vite": ">=5.0.0"
+	},
+	"peerDependenciesMeta": {
+		"bits-ui": { "optional": true },
+		"svelte": { "optional": true },
+		"vite": { "optional": true }
+	},
+	"devDependencies": {
+		"@inlang/paraglide-js": "^2.16.1",
+		"bits-ui": "^2.18.0",
+		"svelte": "^5.55.4"
+	}
+}
