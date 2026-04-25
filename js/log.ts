@@ -10,7 +10,7 @@ import {
 const debugLogs: boolean = JSON.parse(PUBLIC_DEBUG_LOGS);
 const traceLogs: boolean = JSON.parse(PUBLIC_TRACE_LOGS);
 
-function stringify(...args: unknown[]): string {
+export function stringify(...args: unknown[]): string {
 	return args
 		.map((a) => {
 			if (typeof a === 'string') return a;
