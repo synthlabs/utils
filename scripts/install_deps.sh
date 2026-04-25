@@ -157,6 +157,18 @@ check_shared() {
         "corepack enable && corepack prepare pnpm@${pinned:-latest} --activate"
 }
 
+check_secrets_tools() {
+    info "secrets management tools"
+
+    check_tool "gcloud" \
+        "command -v gcloud" \
+        "install gcloud SDK — https://cloud.google.com/sdk/docs/install"
+
+    check_tool "gh" \
+        "command -v gh" \
+        "brew install gh  # or see https://cli.github.com"
+}
+
 check_release_tools() {
     info "release scripting tools"
 
@@ -199,6 +211,7 @@ main() {
     esac
 
     check_shared
+    check_secrets_tools
     check_release_tools
 
     if [[ -f "${ROOT}/.install_deps.sh" ]]; then
