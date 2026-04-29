@@ -70,10 +70,11 @@ Walks `navigator.languages` in priority order, matches by exact tag then primary
 <LanguageSwitcher
 	controller={language}
 	labels={{ en: 'English', ru: 'Русский' }}
+	accentColor="hsl(var(--c-scrybe))"
 />
 ```
 
-`LanguageSwitcher` is a `bits-ui` v2 dropdown styled with vanilla CSS against shadcn design tokens (`--accent`, `--popover`, `--border`, `--foreground`, `--muted-foreground`, `--radius`). It inherits the host app's theme automatically and needs no Tailwind `@source` config in the consumer. The `labels` prop is optional — locale codes are uppercased as the fallback display.
+`LanguageSwitcher` is a `bits-ui` v2 dropdown styled with vanilla CSS against shadcn design tokens (`--accent`, `--popover`, `--border`, `--foreground`, `--muted-foreground`, `--radius`). It inherits the host app's theme automatically and needs no Tailwind `@source` config in the consumer. The `labels` prop is optional — locale codes are uppercased as the fallback display. The optional `accentColor` prop accepts any CSS color string and tints the active locale code tag.
 
 Need a custom UI? Use `LanguageController` directly:
 

@@ -6,9 +6,10 @@
 		controller: LanguageController<L>;
 		labels?: Record<string, string>;
 		align?: 'start' | 'end' | 'center';
+		accentColor?: string;
 	}
 
-	let { controller, labels = {}, align = 'end' }: Props = $props();
+	let { controller, labels = {}, align = 'end', accentColor }: Props = $props();
 
 	function labelFor(locale: string): string {
 		return labels[locale] ?? locale.toUpperCase();
@@ -61,7 +62,13 @@
 			{@const active = locale === controller.current}
 			<DropdownMenu.Item onclick={() => controller.set(locale)}>
 				{#snippet child({ props })}
-					<button {...props} type="button" class="ls-item" class:active>
+					<button
+						{...props}
+						type="button"
+						class="ls-item"
+						class:active
+						style:--ls-accent-color={active ? accentColor : undefined}
+					>
 						<span class="ls-code">{locale.toUpperCase()}</span>
 						<span class="ls-name">{labelFor(locale)}</span>
 						{#if active}
@@ -168,7 +175,7 @@
 		min-width: 22px;
 	}
 	.ls-item.active .ls-code {
-		color: hsl(var(--foreground));
+		color: var(--ls-accent-color, hsl(var(--foreground)));
 	}
 	.ls-name {
 		flex: 1;
