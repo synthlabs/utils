@@ -152,7 +152,7 @@
 	{/if}
 
 	<div class="flex items-center justify-between gap-2 border-t pt-3">
-		<button type="button" class="border-input hover:bg-muted h-9 rounded-md border px-3 text-sm disabled:opacity-40" disabled={wizard.step === 'username' || wizard.step === 'sending' || wizard.step === 'done'} onclick={() => wizard.back()}>
+		<button type="button" class="border-input hover:bg-muted h-9 cursor-pointer rounded-md border px-3 text-sm disabled:cursor-not-allowed disabled:opacity-40" disabled={wizard.step === 'username' || wizard.step === 'sending' || wizard.step === 'done'} onclick={() => wizard.back()}>
 			Back
 		</button>
 		{#if wizard.step === 'preview'}
