@@ -129,13 +129,7 @@ async fn submit<R: Runtime>(
     } else {
         None
     };
-
-    let mut attachments = Vec::new();
-    if input.include.log {
-        if let Some(attachment) = collect::log_tail_attachment(&app, 2 * 1024 * 1024)? {
-            attachments.push(attachment);
-        }
-    }
+    let include_log = input.include.log;
 
     let report = Report::new(
         state.app,
@@ -148,6 +142,13 @@ async fn submit<R: Runtime>(
         config,
         error,
     );
+
+    let mut attachments = vec![report.json_attachment()?];
+    if include_log {
+        if let Some(attachment) = collect::log_tail_attachment(&app, 2 * 1024 * 1024)? {
+            attachments.push(attachment);
+        }
+    }
 
     state
         .transport

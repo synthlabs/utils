@@ -122,6 +122,38 @@ impl Report {
         }
     }
 
+    pub(crate) fn json_attachment_filename(&self) -> String {
+        format!("{}-report.json", self.app.as_str())
+    }
+
+    pub(crate) fn json_attachment(&self) -> Result<Attachment, String> {
+        Ok(Attachment {
+            filename: self.json_attachment_filename(),
+            bytes: serde_json::to_vec_pretty(self)
+                .map_err(|err| format!("failed to serialize report attachment: {err}"))?,
+            mime: "application/json".to_owned(),
+        })
+    }
+
+    pub(crate) fn included_sections(&self) -> String {
+        let sections = [
+            ("system", self.include.system),
+            ("build", self.include.build),
+            ("log", self.include.log),
+            ("config", self.include.config),
+            ("error", self.include.error),
+        ]
+        .into_iter()
+        .filter_map(|(name, included)| included.then_some(name))
+        .collect::<Vec<_>>();
+
+        if sections.is_empty() {
+            "none".to_owned()
+        } else {
+            sections.join(", ")
+        }
+    }
+
     pub(crate) fn attachments_summary(attachments: &[Attachment]) -> String {
         if attachments.is_empty() {
             return "none".to_owned();
@@ -132,5 +164,83 @@ impl Report {
             .map(|attachment| format!("{} ({} bytes)", attachment.filename, attachment.bytes.len()))
             .collect::<Vec<_>>()
             .join(", ")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn sample_report() -> Report {
+        Report::new(
+            AppId::Pepo,
+            BuildInfo {
+                app_version: "0.2.23".to_owned(),
+                app_commit: "ece1528".to_owned(),
+                build_time: "1778451489".to_owned(),
+            },
+            "1778451510".to_owned(),
+            Some(" jerod ".to_owned()),
+            "message".to_owned(),
+            IncludeFlags {
+                system: true,
+                build: true,
+                log: true,
+                config: true,
+                error: true,
+            },
+            Some(SystemInfo {
+                os: "macos".to_owned(),
+                arch: "aarch64".to_owned(),
+                locale: Some("en_US.UTF-8".to_owned()),
+            }),
+            Some(json!({ "theme": "dark" })),
+            Some(ErrorContext {
+                kind: "error".to_owned(),
+                message: "inbound submit failed".to_owned(),
+                target: Some("webview".to_owned()),
+                timestamp: "1778451510".to_owned(),
+            }),
+        )
+    }
+
+    #[test]
+    fn json_attachment_contains_full_report() {
+        let attachment = sample_report().json_attachment().unwrap();
+        assert_eq!(attachment.filename, "pepo-report.json");
+        assert_eq!(attachment.mime, "application/json");
+
+        let value: Value = serde_json::from_slice(&attachment.bytes).unwrap();
+        assert_eq!(value["app"], "pepo");
+        assert_eq!(value["discord_user"], "jerod");
+        assert_eq!(value["system"]["os"], "macos");
+        assert_eq!(value["config"]["theme"], "dark");
+        assert_eq!(value["error"]["message"], "inbound submit failed");
+    }
+
+    #[test]
+    fn included_sections_describes_enabled_flags() {
+        assert_eq!(
+            sample_report().included_sections(),
+            "system, build, log, config, error"
+        );
+
+        let report = Report::new(
+            AppId::Scrybe,
+            BuildInfo {
+                app_version: "1.0.0".to_owned(),
+                app_commit: "unknown".to_owned(),
+                build_time: "unknown".to_owned(),
+            },
+            "1778451510".to_owned(),
+            None,
+            String::new(),
+            IncludeFlags::default(),
+            None,
+            None,
+            None,
+        );
+        assert_eq!(report.included_sections(), "none");
     }
 }
