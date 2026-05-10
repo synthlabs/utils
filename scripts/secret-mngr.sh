@@ -158,7 +158,7 @@ gh_exists() {
 
 gh_set() {
     local name="$1" repo="$2" file="$3"
-    gh secret set "$name" --repo "$repo" --body-file "$file" >/dev/null
+    gh secret set "$name" --repo "$repo" < "$file" >/dev/null
     ok "GH  $name (repo=$repo)"
 }
 

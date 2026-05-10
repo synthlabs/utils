@@ -1,0 +1,8 @@
+[package]
+name = "inbound-build"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "inbound_build"
+path = "src/lib.rs"
