@@ -11,9 +11,7 @@ export type UpdateToastCopy = {
     updateAvailable: (version: string) => string;
     releaseNotes: string;
     dismiss: string;
-    installPrompt: (version: string) => string;
     update: string;
-    later: string;
     downloading: string;
     downloadingProgress: (percent: number) => string;
     installing: string;
@@ -34,9 +32,7 @@ const DEFAULT_COPY: UpdateToastCopy = {
     updateAvailable: (version) => `Update ${version} available`,
     releaseNotes: "Release notes",
     dismiss: "Dismiss",
-    installPrompt: (version) => `Ready to update to ${version}`,
     update: "Update",
-    later: "Later",
     downloading: "Downloading update...",
     downloadingProgress: (percent) => `Downloading update... ${percent}%`,
     installing: "Installing update...",
@@ -49,9 +45,7 @@ function resolveCopy(copy?: Partial<UpdateToastCopy>): UpdateToastCopy {
         updateAvailable: copy?.updateAvailable ?? DEFAULT_COPY.updateAvailable,
         releaseNotes: copy?.releaseNotes ?? DEFAULT_COPY.releaseNotes,
         dismiss: copy?.dismiss ?? DEFAULT_COPY.dismiss,
-        installPrompt: copy?.installPrompt ?? DEFAULT_COPY.installPrompt,
         update: copy?.update ?? DEFAULT_COPY.update,
-        later: copy?.later ?? DEFAULT_COPY.later,
         downloading: copy?.downloading ?? DEFAULT_COPY.downloading,
         downloadingProgress:
             copy?.downloadingProgress ?? DEFAULT_COPY.downloadingProgress,
@@ -59,6 +53,17 @@ function resolveCopy(copy?: Partial<UpdateToastCopy>): UpdateToastCopy {
         restarting: copy?.restarting ?? DEFAULT_COPY.restarting,
         installFailed: copy?.installFailed ?? DEFAULT_COPY.installFailed,
     };
+}
+
+async function openReleaseNotesUrl(
+    releaseUrl: string,
+    openReleaseNotes: (url: string) => Promise<void>,
+) {
+    try {
+        await openReleaseNotes(releaseUrl);
+    } catch (error) {
+        Logger.error("Failed to open release notes", error);
+    }
 }
 
 function formatError(error: unknown): string {
@@ -70,6 +75,24 @@ function loadingToastOptions(id: ToastId): ExternalToast {
         id,
         duration: Number.POSITIVE_INFINITY,
         dismissable: false,
+    };
+}
+
+function downloadingToastOptions(
+    id: ToastId,
+    copy: UpdateToastCopy,
+    releaseUrl: string,
+    openReleaseNotes: (url: string) => Promise<void>,
+): ExternalToast {
+    return {
+        ...loadingToastOptions(id),
+        action: {
+            label: copy.releaseNotes,
+            onClick: async (event) => {
+                event.preventDefault();
+                await openReleaseNotesUrl(releaseUrl, openReleaseNotes);
+            },
+        },
     };
 }
 
@@ -102,41 +125,20 @@ export async function checkForAppUpdates(
 
     const toastId = UPDATE_TOAST_ID;
 
-    const showInstallPrompt = async () => {
-        try {
-            await openReleaseNotes(release_url);
-        } catch (error) {
-            Logger.error("Failed to open release notes", error);
-        }
-
-        toast.info(copy.installPrompt(update.version), {
-            id: toastId,
-            duration,
-            action: {
-                label: copy.update,
-                onClick: async (event) => {
-                    event.preventDefault();
-                    await installUpdate(
-                        toastId,
-                        copy,
-                        update.downloadAndInstall.bind(update),
-                    );
-                },
-            },
-            cancel: {
-                label: copy.later,
-            },
-        });
-    };
-
     toast.info(copy.updateAvailable(update.version), {
         id: toastId,
         duration,
         action: {
-            label: copy.releaseNotes,
+            label: copy.update,
             onClick: async (event) => {
                 event.preventDefault();
-                await showInstallPrompt();
+                await installUpdate(
+                    toastId,
+                    copy,
+                    release_url,
+                    openReleaseNotes,
+                    update.downloadAndInstall.bind(update),
+                );
             },
         },
         cancel: {
@@ -148,6 +150,8 @@ export async function checkForAppUpdates(
 async function installUpdate(
     toastId: ToastId,
     copy: UpdateToastCopy,
+    releaseUrl: string,
+    openReleaseNotes: (url: string) => Promise<void>,
     downloadAndInstall: (
         onEvent?: (event: DownloadEvent) => void,
     ) => Promise<void>,
@@ -156,7 +160,10 @@ async function installUpdate(
     let downloadedBytes = 0;
     let lastPercent: number | undefined;
 
-    toast.loading(copy.downloading, loadingToastOptions(toastId));
+    toast.loading(
+        copy.downloading,
+        downloadingToastOptions(toastId, copy, releaseUrl, openReleaseNotes),
+    );
 
     try {
         await downloadAndInstall((event) => {
@@ -164,7 +171,15 @@ async function installUpdate(
                 contentLength = event.data.contentLength;
                 downloadedBytes = 0;
                 lastPercent = undefined;
-                toast.loading(copy.downloading, loadingToastOptions(toastId));
+                toast.loading(
+                    copy.downloading,
+                    downloadingToastOptions(
+                        toastId,
+                        copy,
+                        releaseUrl,
+                        openReleaseNotes,
+                    ),
+                );
                 return;
             }
 
@@ -179,7 +194,12 @@ async function installUpdate(
                     lastPercent = percent;
                     toast.loading(
                         copy.downloadingProgress(percent),
-                        loadingToastOptions(toastId),
+                        downloadingToastOptions(
+                            toastId,
+                            copy,
+                            releaseUrl,
+                            openReleaseNotes,
+                        ),
                     );
                 }
 
