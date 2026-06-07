@@ -143,6 +143,9 @@ export async function checkForAppUpdates(
         },
         cancel: {
             label: copy.dismiss,
+            onClick: (event) => {
+                event.preventDefault();
+            },
         },
     });
 }
