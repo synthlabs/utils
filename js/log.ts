@@ -4,7 +4,7 @@ import {
 	debug as pluginDebug,
 	info as pluginInfo,
 	warn as pluginWarn,
-	error as pluginError,
+	error as pluginError
 } from '@tauri-apps/plugin-log';
 
 const debugLogs: boolean = JSON.parse(PUBLIC_DEBUG_LOGS);

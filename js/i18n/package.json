@@ -27,9 +27,15 @@
 		"vite": ">=5.0.0"
 	},
 	"peerDependenciesMeta": {
-		"bits-ui": { "optional": true },
-		"svelte": { "optional": true },
-		"vite": { "optional": true }
+		"bits-ui": {
+			"optional": true
+		},
+		"svelte": {
+			"optional": true
+		},
+		"vite": {
+			"optional": true
+		}
 	},
 	"devDependencies": {
 		"@inlang/paraglide-js": "^2.16.1",

@@ -42,4 +42,15 @@ export interface Capabilities {
 	has_config: boolean;
 }
 
-export type StepId = 'username' | 'message' | 'system' | 'build' | 'log' | 'config' | 'error' | 'preview' | 'sending' | 'done' | 'failed';
+export type StepId =
+	| 'username'
+	| 'message'
+	| 'system'
+	| 'build'
+	| 'log'
+	| 'config'
+	| 'error'
+	| 'preview'
+	| 'sending'
+	| 'done'
+	| 'failed';

@@ -1,5 +1,12 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { BuildInfo, Capabilities, ErrorContext, LogPreview, ReportInput, SystemInfo } from './types';
+import type {
+	BuildInfo,
+	Capabilities,
+	ErrorContext,
+	LogPreview,
+	ReportInput,
+	SystemInfo
+} from './types';
 
 export function inboundCapabilities(): Promise<Capabilities> {
 	return invoke('plugin:inbound|capabilities');
