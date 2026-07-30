@@ -1,0 +1,48 @@
+TAURI_PACKAGING_SHARED_DIR := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
+
+ifeq ($(strip $(TAURI_PACKAGING_PROJECT_ROOT)),)
+$(error TAURI_PACKAGING_PROJECT_ROOT must point to the consuming Tauri checkout)
+endif
+
+TAURI_PACKAGING_TOKE ?= toke
+TAURI_PACKAGING_PNPM ?= pnpm
+TAURI_PACKAGING_POWERSHELL ?= powershell
+TAURI_PACKAGING_MAKE_COMMAND ?= make
+TAURI_PACKAGING_CONTAINER_RUNTIME ?=
+TAURI_PACKAGING_INSTALL_ARTIFACT ?=
+TAURI_PACKAGING_PASSTHROUGH_VARS ?=
+
+TAURI_PACKAGING_PASSTHROUGH_ARGS = $(foreach variable,$(TAURI_PACKAGING_PASSTHROUGH_VARS),--passthrough-var "$(variable)")
+TAURI_PACKAGING_CONTAINER_RUNTIME_ARG = $(if $(strip $(TAURI_PACKAGING_CONTAINER_RUNTIME)),--container-runtime "$(TAURI_PACKAGING_CONTAINER_RUNTIME)")
+
+ifeq ($(OS),Windows_NT)
+define TAURI_PACKAGING_BUILD
+	$(TAURI_PACKAGING_POWERSHELL) -NoProfile -ExecutionPolicy Bypass -File "$(TAURI_PACKAGING_SHARED_DIR)/build.ps1" -ProjectRoot "$(TAURI_PACKAGING_PROJECT_ROOT)" -TokeCommand "$(TAURI_PACKAGING_TOKE)" -PnpmCommand "$(TAURI_PACKAGING_PNPM)"
+endef
+define TAURI_PACKAGING_INSTALL
+	$(TAURI_PACKAGING_POWERSHELL) -NoProfile -ExecutionPolicy Bypass -File "$(TAURI_PACKAGING_SHARED_DIR)/install.ps1" -ProjectRoot "$(TAURI_PACKAGING_PROJECT_ROOT)" -BuildTarget "$(1)" -Artifact "$(TAURI_PACKAGING_INSTALL_ARTIFACT)" -MakeCommand "$(TAURI_PACKAGING_MAKE_COMMAND)"
+endef
+else
+define TAURI_PACKAGING_BUILD
+	"$(TAURI_PACKAGING_SHARED_DIR)/build.sh" --project-root "$(TAURI_PACKAGING_PROJECT_ROOT)" --toke "$(TAURI_PACKAGING_TOKE)" --pnpm "$(TAURI_PACKAGING_PNPM)" $(TAURI_PACKAGING_CONTAINER_RUNTIME_ARG) $(TAURI_PACKAGING_PASSTHROUGH_ARGS)
+endef
+define TAURI_PACKAGING_INSTALL
+	"$(TAURI_PACKAGING_SHARED_DIR)/install.sh" --project-root "$(TAURI_PACKAGING_PROJECT_ROOT)" --build-target "$(1)" --artifact "$(TAURI_PACKAGING_INSTALL_ARTIFACT)" --make-command "$(TAURI_PACKAGING_MAKE_COMMAND)"
+endef
+endif
+
+.PHONY: build
+build:
+	$(TAURI_PACKAGING_BUILD)
+
+.PHONY: build-internal
+build-internal:
+	$(TAURI_PACKAGING_BUILD)
+
+.PHONY: install
+install:
+	$(call TAURI_PACKAGING_INSTALL,build)
+
+.PHONY: install-internal
+install-internal:
+	$(call TAURI_PACKAGING_INSTALL,build-internal)
