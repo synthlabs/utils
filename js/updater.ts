@@ -23,10 +23,14 @@ export type CheckForAppUpdatesOptions = {
 	copy?: Partial<UpdateToastCopy>;
 	durationMs?: number;
 	openReleaseNotes?: (url: string) => Promise<void>;
+	updateAction?: UpdateAction;
 };
+
+export type UpdateAction = { kind: 'install' } | { kind: 'external'; label: string; url: string };
 
 const UPDATE_TOAST_ID = 'app-update-available';
 const DEFAULT_TOAST_DURATION_MS = 12000;
+const DEFAULT_UPDATE_ACTION: UpdateAction = { kind: 'install' };
 
 const DEFAULT_COPY: UpdateToastCopy = {
 	updateAvailable: (version) => `Update ${version} available`,
@@ -62,6 +66,17 @@ async function openReleaseNotesUrl(
 		await openReleaseNotes(releaseUrl);
 	} catch (error) {
 		Logger.error('Failed to open release notes', error);
+	}
+}
+
+async function openExternalUpdateUrl(
+	updateUrl: string,
+	openExternalUrl: (url: string) => Promise<void>
+) {
+	try {
+		await openExternalUrl(updateUrl);
+	} catch (error) {
+		Logger.error('Failed to open external update URL', error);
 	}
 }
 
@@ -110,6 +125,7 @@ export async function checkForAppUpdates(
 	const copy = resolveCopy(options.copy);
 	const duration = options.durationMs ?? DEFAULT_TOAST_DURATION_MS;
 	const openReleaseNotes = options.openReleaseNotes ?? openUrl;
+	const updateAction = options.updateAction ?? DEFAULT_UPDATE_ACTION;
 	const update = await check();
 
 	if (!update) {
@@ -125,9 +141,15 @@ export async function checkForAppUpdates(
 		id: toastId,
 		duration,
 		action: {
-			label: copy.update,
+			label: updateAction.kind === 'external' ? updateAction.label : copy.update,
 			onClick: async (event) => {
 				event.preventDefault();
+
+				if (updateAction.kind === 'external') {
+					await openExternalUpdateUrl(updateAction.url, openReleaseNotes);
+					return;
+				}
+
 				await installUpdate(
 					toastId,
 					copy,
