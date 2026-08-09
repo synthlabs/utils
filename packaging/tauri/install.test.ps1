@@ -69,11 +69,14 @@ if "%TAURI_PACKAGING_TEST_MAKE_MODE%"=="fail" exit /b %TAURI_PACKAGING_TEST_MAKE
 if "%TAURI_PACKAGING_TEST_MAKE_MODE%"=="missing" exit /b 0
 if not exist "%TAURI_PACKAGING_TEST_TARGET_DIR%\release\bundle\nsis" mkdir "%TAURI_PACKAGING_TEST_TARGET_DIR%\release\bundle\nsis"
 if "%TAURI_PACKAGING_TEST_MAKE_MODE%"=="multiple" (
-  copy /y "%SystemRoot%\System32\whoami.exe" "%TAURI_PACKAGING_TEST_TARGET_DIR%\release\bundle\nsis\Sample_one_x64-setup.exe" >nul
-  copy /y "%SystemRoot%\System32\whoami.exe" "%TAURI_PACKAGING_TEST_TARGET_DIR%\release\bundle\nsis\Sample_two_x64-setup.exe" >nul
+  copy /y "%SystemRoot%\System32\whoami.exe" "%TAURI_PACKAGING_TEST_TARGET_DIR%\release\bundle\nsis\Sample_one_x64-setup.exe" >nul || exit /b 1
+  copy /b "%TAURI_PACKAGING_TEST_TARGET_DIR%\release\bundle\nsis\Sample_one_x64-setup.exe" +,, >nul || exit /b 1
+  copy /y "%SystemRoot%\System32\whoami.exe" "%TAURI_PACKAGING_TEST_TARGET_DIR%\release\bundle\nsis\Sample_two_x64-setup.exe" >nul || exit /b 1
+  copy /b "%TAURI_PACKAGING_TEST_TARGET_DIR%\release\bundle\nsis\Sample_two_x64-setup.exe" +,, >nul || exit /b 1
   exit /b 0
 )
-copy /y "%SystemRoot%\System32\whoami.exe" "%TAURI_PACKAGING_TEST_TARGET_DIR%\release\bundle\nsis\Sample_1.0.0_x64-setup.exe" >nul
+copy /y "%SystemRoot%\System32\whoami.exe" "%TAURI_PACKAGING_TEST_TARGET_DIR%\release\bundle\nsis\Sample_1.0.0_x64-setup.exe" >nul || exit /b 1
+copy /b "%TAURI_PACKAGING_TEST_TARGET_DIR%\release\bundle\nsis\Sample_1.0.0_x64-setup.exe" +,, >nul || exit /b 1
 exit /b 0
 '@ | Set-Content -LiteralPath $fakeMake -Encoding Ascii
 
