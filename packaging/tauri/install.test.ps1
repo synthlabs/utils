@@ -160,3 +160,5 @@ try {
     Remove-Item Env:TAURI_PACKAGING_TEST_MAKE_EXIT_CODE -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
+
+exit 0
