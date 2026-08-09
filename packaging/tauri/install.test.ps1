@@ -8,6 +8,7 @@ $projectRoot = Join-Path $testRoot 'repo with spaces'
 $targetRoot = Join-Path $projectRoot 'nested target'
 $makeLog = Join-Path $testRoot 'make.log'
 $fakeMake = Join-Path $testRoot 'fake-make.cmd'
+$fakeArtifact = Join-Path $testRoot 'fake-artifact.ps1'
 $fakeCargo = Join-Path $testRoot 'fake-cargo.cmd'
 $hostExe = (Get-Process -Id $PID).Path
 
@@ -40,9 +41,16 @@ function Invoke-InstallTest {
         $arguments += @('-Artifact', $Artifact)
     }
 
-    $output = & $hostExe @arguments 2>&1
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $output = & $hostExe @arguments 2>&1
+        $exitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
     return @{
-        ExitCode = $LASTEXITCODE
+        ExitCode = $exitCode
         Output = ($output -join "`n")
     }
 }
@@ -63,26 +71,34 @@ echo {"target_directory":"%TAURI_PACKAGING_TEST_TARGET_DIR_JSON%"}
 '@ | Set-Content -LiteralPath $fakeCargo -Encoding Ascii
 
 @'
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$Destination
+)
+$ErrorActionPreference = 'Stop'
+Copy-Item -LiteralPath (Join-Path $env:SystemRoot 'System32\whoami.exe') -Destination $Destination
+(Get-Item -LiteralPath $Destination).LastWriteTimeUtc = [datetime]::UtcNow.AddSeconds(5)
+'@ | Set-Content -LiteralPath $fakeArtifact -Encoding UTF8
+
+@'
 @echo off
 echo %*>>"%TAURI_PACKAGING_TEST_MAKE_LOG%"
 if "%TAURI_PACKAGING_TEST_MAKE_MODE%"=="fail" exit /b %TAURI_PACKAGING_TEST_MAKE_EXIT_CODE%
 if "%TAURI_PACKAGING_TEST_MAKE_MODE%"=="missing" exit /b 0
 if not exist "%TAURI_PACKAGING_TEST_TARGET_DIR%\release\bundle\nsis" mkdir "%TAURI_PACKAGING_TEST_TARGET_DIR%\release\bundle\nsis"
 if "%TAURI_PACKAGING_TEST_MAKE_MODE%"=="multiple" (
-  copy /y "%SystemRoot%\System32\whoami.exe" "%TAURI_PACKAGING_TEST_TARGET_DIR%\release\bundle\nsis\Sample_one_x64-setup.exe" >nul || exit /b 1
-  copy /b "%TAURI_PACKAGING_TEST_TARGET_DIR%\release\bundle\nsis\Sample_one_x64-setup.exe" +,, >nul || exit /b 1
-  copy /y "%SystemRoot%\System32\whoami.exe" "%TAURI_PACKAGING_TEST_TARGET_DIR%\release\bundle\nsis\Sample_two_x64-setup.exe" >nul || exit /b 1
-  copy /b "%TAURI_PACKAGING_TEST_TARGET_DIR%\release\bundle\nsis\Sample_two_x64-setup.exe" +,, >nul || exit /b 1
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%TAURI_PACKAGING_TEST_ARTIFACT_SCRIPT%" "%TAURI_PACKAGING_TEST_TARGET_DIR%\release\bundle\nsis\Sample_one_x64-setup.exe" || exit /b 1
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%TAURI_PACKAGING_TEST_ARTIFACT_SCRIPT%" "%TAURI_PACKAGING_TEST_TARGET_DIR%\release\bundle\nsis\Sample_two_x64-setup.exe" || exit /b 1
   exit /b 0
 )
-copy /y "%SystemRoot%\System32\whoami.exe" "%TAURI_PACKAGING_TEST_TARGET_DIR%\release\bundle\nsis\Sample_1.0.0_x64-setup.exe" >nul || exit /b 1
-copy /b "%TAURI_PACKAGING_TEST_TARGET_DIR%\release\bundle\nsis\Sample_1.0.0_x64-setup.exe" +,, >nul || exit /b 1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%TAURI_PACKAGING_TEST_ARTIFACT_SCRIPT%" "%TAURI_PACKAGING_TEST_TARGET_DIR%\release\bundle\nsis\Sample_1.0.0_x64-setup.exe" || exit /b 1
 exit /b 0
 '@ | Set-Content -LiteralPath $fakeMake -Encoding Ascii
 
 $env:TAURI_PACKAGING_TEST_TARGET_DIR = $targetRoot
 $env:TAURI_PACKAGING_TEST_TARGET_DIR_JSON = $targetRoot.Replace('\', '/')
 $env:TAURI_PACKAGING_TEST_MAKE_LOG = $makeLog
+$env:TAURI_PACKAGING_TEST_ARTIFACT_SCRIPT = $fakeArtifact
 
 try {
     Reset-TestState
@@ -139,6 +155,7 @@ try {
     Remove-Item Env:TAURI_PACKAGING_TEST_TARGET_DIR -ErrorAction SilentlyContinue
     Remove-Item Env:TAURI_PACKAGING_TEST_TARGET_DIR_JSON -ErrorAction SilentlyContinue
     Remove-Item Env:TAURI_PACKAGING_TEST_MAKE_LOG -ErrorAction SilentlyContinue
+    Remove-Item Env:TAURI_PACKAGING_TEST_ARTIFACT_SCRIPT -ErrorAction SilentlyContinue
     Remove-Item Env:TAURI_PACKAGING_TEST_MAKE_MODE -ErrorAction SilentlyContinue
     Remove-Item Env:TAURI_PACKAGING_TEST_MAKE_EXIT_CODE -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue
