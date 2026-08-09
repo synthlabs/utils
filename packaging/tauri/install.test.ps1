@@ -24,8 +24,7 @@ function Assert-True {
 function Invoke-InstallTest {
     param(
         [string]$BuildTarget = 'build',
-        [AllowNull()]
-        [string]$Artifact = $null
+        [string]$Artifact
     )
 
     $arguments = @(
@@ -37,7 +36,7 @@ function Invoke-InstallTest {
         '-MakeCommand', $fakeMake,
         '-CargoCommand', $fakeCargo
     )
-    if ($null -ne $Artifact) {
+    if ($PSBoundParameters.ContainsKey('Artifact')) {
         $arguments += @('-Artifact', $Artifact)
     }
 
