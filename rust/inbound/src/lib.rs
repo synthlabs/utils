@@ -56,6 +56,7 @@ pub fn init<R: Runtime>(config: Config<R>) -> TauriPlugin<R> {
             preview_log_tail,
             preview_config,
             preview_error,
+            captured_errors,
             submit,
         ])
         .setup(move |app, _api| {
@@ -113,6 +114,11 @@ fn preview_error() -> Option<ErrorContext> {
 }
 
 #[tauri::command]
+fn captured_errors() -> Vec<capture::CapturedError> {
+    capture::captured_errors()
+}
+
+#[tauri::command]
 async fn submit<R: Runtime>(
     app: AppHandle<R>,
     state: State<'_, InboundState<R>>,
@@ -124,11 +130,7 @@ async fn submit<R: Runtime>(
     } else {
         None
     };
-    let error = if input.include.error {
-        capture::latest_error()
-    } else {
-        None
-    };
+    let error = report_error(input.include.error, input.error, capture::latest_error);
     let include_log = input.include.log;
 
     let report = Report::new(
@@ -164,5 +166,66 @@ fn scrub_config<R: Runtime>(
     match state.scrubber.as_ref() {
         Some(scrubber) => scrubber.scrub(app),
         None => Ok(None),
+    }
+}
+
+fn report_error(
+    include: bool,
+    selected: Option<ErrorContext>,
+    latest: impl FnOnce() -> Option<ErrorContext>,
+) -> Option<ErrorContext> {
+    if include {
+        selected.or_else(latest)
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn error(message: &str) -> ErrorContext {
+        ErrorContext {
+            kind: "error".into(),
+            message: message.into(),
+            target: None,
+            timestamp: "1".into(),
+        }
+    }
+
+    #[test]
+    fn submitted_error_remains_the_reviewed_snapshot() {
+        let selected = error("reviewed frontend error");
+        for _ in 0..2 {
+            let actual = report_error(true, Some(selected.clone()), || {
+                panic!("must not read a newer error")
+            });
+            assert_eq!(actual.unwrap().message, "reviewed frontend error");
+        }
+    }
+
+    #[test]
+    fn disabled_error_inclusion_never_collects_an_error() {
+        assert!(
+            report_error(false, Some(error("private")), || panic!("must not collect")).is_none()
+        );
+    }
+
+    #[test]
+    fn legacy_input_still_uses_the_latest_captured_error() {
+        let input: ReportInput = serde_json::from_value(serde_json::json!({
+            "discord_user": null, "message": "legacy", "include": {
+                "system": false, "build": false, "log": false, "config": false, "error": true
+            }
+        }))
+        .unwrap();
+        assert!(input.error.is_none());
+        assert_eq!(
+            report_error(input.include.error, input.error, || Some(error("latest")))
+                .unwrap()
+                .message,
+            "latest"
+        );
     }
 }

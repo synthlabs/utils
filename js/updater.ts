@@ -19,7 +19,11 @@ export type UpdateToastCopy = {
 	installFailed: (error: string) => string;
 };
 
+export type UpdateErrorStage = 'check' | 'install' | 'release_notes' | 'external_update';
+export type UpdateErrorHandler = (error: unknown, stage: UpdateErrorStage) => void;
+
 export type CheckForAppUpdatesOptions = {
+	onError?: UpdateErrorHandler;
 	copy?: Partial<UpdateToastCopy>;
 	durationMs?: number;
 	openReleaseNotes?: (url: string) => Promise<void>;
@@ -60,23 +64,27 @@ function resolveCopy(copy?: Partial<UpdateToastCopy>): UpdateToastCopy {
 
 async function openReleaseNotesUrl(
 	releaseUrl: string,
-	openReleaseNotes: (url: string) => Promise<void>
+	openReleaseNotes: (url: string) => Promise<void>,
+	onError?: UpdateErrorHandler
 ) {
 	try {
 		await openReleaseNotes(releaseUrl);
 	} catch (error) {
-		Logger.error('Failed to open release notes', error);
+		if (onError) onError(error, 'release_notes');
+		else Logger.error('Failed to open release notes', error);
 	}
 }
 
 async function openExternalUpdateUrl(
 	updateUrl: string,
-	openExternalUrl: (url: string) => Promise<void>
+	openExternalUrl: (url: string) => Promise<void>,
+	onError?: UpdateErrorHandler
 ) {
 	try {
 		await openExternalUrl(updateUrl);
 	} catch (error) {
-		Logger.error('Failed to open external update URL', error);
+		if (onError) onError(error, 'external_update');
+		else Logger.error('Failed to open external update URL', error);
 	}
 }
 
@@ -96,7 +104,8 @@ function downloadingToastOptions(
 	id: ToastId,
 	copy: UpdateToastCopy,
 	releaseUrl: string,
-	openReleaseNotes: (url: string) => Promise<void>
+	openReleaseNotes: (url: string) => Promise<void>,
+	onError?: UpdateErrorHandler
 ): ExternalToast {
 	return {
 		...loadingToastOptions(id),
@@ -104,7 +113,7 @@ function downloadingToastOptions(
 			label: copy.releaseNotes,
 			onClick: async (event) => {
 				event.preventDefault();
-				await openReleaseNotesUrl(releaseUrl, openReleaseNotes);
+				await openReleaseNotesUrl(releaseUrl, openReleaseNotes, onError);
 			}
 		}
 	};
@@ -126,7 +135,14 @@ export async function checkForAppUpdates(
 	const duration = options.durationMs ?? DEFAULT_TOAST_DURATION_MS;
 	const openReleaseNotes = options.openReleaseNotes ?? openUrl;
 	const updateAction = options.updateAction ?? DEFAULT_UPDATE_ACTION;
-	const update = await check();
+	let update;
+	try {
+		update = await check();
+	} catch (error) {
+		if (!options.onError) throw error;
+		options.onError(error, 'check');
+		return;
+	}
 
 	if (!update) {
 		Logger.info('No update available');
@@ -146,7 +162,11 @@ export async function checkForAppUpdates(
 				event.preventDefault();
 
 				if (updateAction.kind === 'external') {
-					await openExternalUpdateUrl(updateAction.url, openReleaseNotes);
+					await openExternalUpdateUrl(
+						updateAction.url,
+						openReleaseNotes,
+						options.onError
+					);
 					return;
 				}
 
@@ -155,7 +175,8 @@ export async function checkForAppUpdates(
 					copy,
 					release_url,
 					openReleaseNotes,
-					update.downloadAndInstall.bind(update)
+					update.downloadAndInstall.bind(update),
+					options.onError
 				);
 			}
 		},
@@ -171,7 +192,8 @@ async function installUpdate(
 	copy: UpdateToastCopy,
 	releaseUrl: string,
 	openReleaseNotes: (url: string) => Promise<void>,
-	downloadAndInstall: (onEvent?: (event: DownloadEvent) => void) => Promise<void>
+	downloadAndInstall: (onEvent?: (event: DownloadEvent) => void) => Promise<void>,
+	onError?: UpdateErrorHandler
 ) {
 	let contentLength: number | undefined;
 	let downloadedBytes = 0;
@@ -179,7 +201,7 @@ async function installUpdate(
 
 	toast.loading(
 		copy.downloading,
-		downloadingToastOptions(toastId, copy, releaseUrl, openReleaseNotes)
+		downloadingToastOptions(toastId, copy, releaseUrl, openReleaseNotes, onError)
 	);
 
 	try {
@@ -190,7 +212,7 @@ async function installUpdate(
 				lastPercent = undefined;
 				toast.loading(
 					copy.downloading,
-					downloadingToastOptions(toastId, copy, releaseUrl, openReleaseNotes)
+					downloadingToastOptions(toastId, copy, releaseUrl, openReleaseNotes, onError)
 				);
 				return;
 			}
@@ -203,7 +225,13 @@ async function installUpdate(
 					lastPercent = percent;
 					toast.loading(
 						copy.downloadingProgress(percent),
-						downloadingToastOptions(toastId, copy, releaseUrl, openReleaseNotes)
+						downloadingToastOptions(
+							toastId,
+							copy,
+							releaseUrl,
+							openReleaseNotes,
+							onError
+						)
 					);
 				}
 
@@ -216,6 +244,11 @@ async function installUpdate(
 		toast.loading(copy.restarting, loadingToastOptions(toastId));
 		await relaunch();
 	} catch (error) {
+		if (onError) {
+			toast.dismiss(toastId);
+			onError(error, 'install');
+			return;
+		}
 		Logger.error('Update install failed', error);
 		toast.error(copy.installFailed(formatError(error)), {
 			id: toastId,

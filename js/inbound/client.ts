@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import type {
 	BuildInfo,
+	CapturedError,
 	Capabilities,
 	ErrorContext,
 	LogPreview,
@@ -30,6 +31,10 @@ export function previewConfig(): Promise<string | null> {
 
 export function previewError(): Promise<ErrorContext | null> {
 	return invoke('plugin:inbound|preview_error');
+}
+
+export function capturedErrors(): Promise<CapturedError[]> {
+	return invoke('plugin:inbound|captured_errors');
 }
 
 export function submitReport(input: ReportInput): Promise<void> {

@@ -11,6 +11,11 @@ export interface ErrorContext {
 	timestamp: string;
 }
 
+export interface CapturedError {
+	id: string;
+	error: ErrorContext;
+}
+
 export interface IncludeFlags {
 	system: boolean;
 	build: boolean;
@@ -30,6 +35,7 @@ export interface ReportInput {
 	discord_user: string | null;
 	message: string;
 	include: IncludeFlags;
+	error?: ErrorContext | null;
 }
 
 export interface SystemInfo {

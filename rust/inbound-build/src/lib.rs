@@ -8,6 +8,7 @@ pub const COMMANDS: &[&str] = &[
     "preview_log_tail",
     "preview_config",
     "preview_error",
+    "captured_errors",
     "submit",
 ];
 

@@ -53,6 +53,8 @@ pub struct ReportInput {
     pub discord_user: Option<String>,
     pub message: String,
     pub include: IncludeFlags,
+    #[serde(default)]
+    pub error: Option<ErrorContext>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
