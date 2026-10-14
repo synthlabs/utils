@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install_deps.sh — verify (default) or install (--ci) system deps for a
+# install_deps.sh - verify (default) or install (--ci) system deps for a
 # Tauri 2 + pnpm project. Shared across projects via the utils submodule.
 # Per-project extras live in <repo-root>/.install_deps.sh (sourced if present).
 
@@ -24,8 +24,8 @@ else
 fi
 
 ok()   { printf "  ${C_GREEN}✓${C_RESET} %s\n" "$1"; }
-miss() { printf "  ${C_RED}✗${C_RESET} %s ${C_DIM}— %s${C_RESET}\n" "$1" "$2"; }
-warn() { printf "  ${C_YELLOW}!${C_RESET} %s ${C_DIM}— %s${C_RESET}\n" "$1" "$2"; }
+miss() { printf "  ${C_RED}✗${C_RESET} %s ${C_DIM}- %s${C_RESET}\n" "$1" "$2"; }
+warn() { printf "  ${C_YELLOW}!${C_RESET} %s ${C_DIM}- %s${C_RESET}\n" "$1" "$2"; }
 info() { printf "${C_BOLD}==>${C_RESET} %s\n" "$1"; }
 
 MISSING=()
@@ -84,7 +84,7 @@ apply_apt_batch() {
         if eval "$check" >/dev/null 2>&1; then
             ok "$name (installed)"
         else
-            miss "$name" "apt install did not resolve — check package name"
+            miss "$name" "apt install did not resolve - check package name"
             MISSING+=("$name")
         fi
     done
@@ -98,7 +98,7 @@ pnpm_pinned_version() {
 init_submodules() {
     [[ -f "${ROOT}/.gitmodules" ]] || return 0
     # Only init uninitialized submodules (status prefixed with `-`). Don't
-    # force-reset already-initialized ones — that would silently revert any
+    # force-reset already-initialized ones - that would silently revert any
     # in-progress pointer bumps the user hasn't committed yet.
     if git -C "${ROOT}" submodule status | grep -q '^-'; then
         info "git submodule update --init --recursive"
@@ -162,7 +162,7 @@ check_secrets_tools() {
 
     check_tool "gcloud" \
         "command -v gcloud" \
-        "install gcloud SDK — https://cloud.google.com/sdk/docs/install"
+        "install gcloud SDK - https://cloud.google.com/sdk/docs/install"
 
     check_tool "gh" \
         "command -v gh" \
@@ -182,7 +182,7 @@ check_release_tools() {
     [[ -z "$go_bin" ]] && go_bin="$(go env GOPATH)/bin"
 
     if [[ ":${PATH}:" != *":${go_bin}:"* ]]; then
-        warn "PATH" "${go_bin} not on PATH — add to your shell rc"
+        warn "PATH" "${go_bin} not on PATH - add to your shell rc"
         export PATH="${go_bin}:${PATH}"
     fi
 
@@ -205,7 +205,7 @@ main() {
         Darwin) check_macos ;;
         Linux)  check_linux ;;
         *)
-            echo "unsupported OS: $os — use install_deps.ps1 on Windows" >&2
+            echo "unsupported OS: $os - use install_deps.ps1 on Windows" >&2
             exit 2
             ;;
     esac

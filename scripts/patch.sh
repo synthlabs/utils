@@ -1,5 +1,5 @@
 #!/bin/bash
-# patch.sh — bump version, regenerate specta bindings, commit.
+# patch.sh - bump version, regenerate specta bindings, commit.
 #
 # Assumes the repo has a root-level pnpm workspace (package.json) and Cargo
 # workspace (Cargo.toml) so `pnpm exec cargo run --example gen_bindings` works

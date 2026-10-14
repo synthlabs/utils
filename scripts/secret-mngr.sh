@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# secret-mngr.sh — manage secrets across GCP Secret Manager and GitHub Actions.
+# secret-mngr.sh - manage secrets across GCP Secret Manager and GitHub Actions.
 # Subcommands: set, get, status, rm. See `secret-mngr --help` for usage.
 
 set -euo pipefail
@@ -13,15 +13,15 @@ else
 fi
 
 ok()   { printf "  ${C_GREEN}✓${C_RESET} %s\n" "$1"; }
-miss() { printf "  ${C_RED}✗${C_RESET} %s ${C_DIM}— %s${C_RESET}\n" "$1" "${2:-}"; }
-warn() { printf "  ${C_YELLOW}!${C_RESET} %s ${C_DIM}— %s${C_RESET}\n" "$1" "${2:-}"; }
+miss() { printf "  ${C_RED}✗${C_RESET} %s ${C_DIM}- %s${C_RESET}\n" "$1" "${2:-}"; }
+warn() { printf "  ${C_YELLOW}!${C_RESET} %s ${C_DIM}- %s${C_RESET}\n" "$1" "${2:-}"; }
 info() { printf "${C_BOLD}==>${C_RESET} %s\n" "$1"; }
 err()  { printf "${C_RED}${C_BOLD}error:${C_RESET} %s\n" "$1" >&2; }
 die()  { err "$1"; exit "${2:-1}"; }
 
 usage() {
     cat <<'EOF'
-secret-mngr — manage secrets across GCP Secret Manager and GitHub Actions.
+secret-mngr - manage secrets across GCP Secret Manager and GitHub Actions.
 
 usage:
   secret-mngr set <name>     [--project P] [--repo OWNER/NAME] [--only gcp|gh] [--gh-name N]
@@ -53,7 +53,7 @@ gh_name() {
 
 validate_gh_name() {
     [[ "$1" =~ ^[A-Z_][A-Z0-9_]*$ ]] || \
-        die "GH secret name '$1' must match ^[A-Z_][A-Z0-9_]*\$ — pass --gh-name to override"
+        die "GH secret name '$1' must match ^[A-Z_][A-Z0-9_]*\$ - pass --gh-name to override"
 }
 
 # ── default resolution ───────────────────────────────────────────────────────
@@ -65,7 +65,7 @@ resolve_project() {
     fi
     p=$(gcloud config get-value project 2>/dev/null || true)
     [[ -n "$p" && "$p" != "(unset)" ]] || \
-        die "no GCP project — pass --project, set SECRET_MNGR_GCP_PROJECT, or 'gcloud config set project ...'"
+        die "no GCP project - pass --project, set SECRET_MNGR_GCP_PROJECT, or 'gcloud config set project ...'"
     printf '%s' "$p"
 }
 
@@ -74,7 +74,7 @@ resolve_repo() {
     if [[ -n "$r" ]]; then printf '%s' "$r"; return; fi
     local origin
     origin=$(git remote get-url origin 2>/dev/null) || \
-        die "no GH repo — pass --repo OWNER/NAME or run inside a git checkout with origin set"
+        die "no GH repo - pass --repo OWNER/NAME or run inside a git checkout with origin set"
     origin="${origin#git@github.com:}"
     origin="${origin#https://github.com/}"
     origin="${origin#ssh://git@github.com/}"
@@ -86,16 +86,16 @@ resolve_repo() {
 # ── tool / auth checks ───────────────────────────────────────────────────────
 ensure_gcloud() {
     command -v gcloud >/dev/null 2>&1 || \
-        die "gcloud not found — install: https://cloud.google.com/sdk/docs/install"
+        die "gcloud not found - install: https://cloud.google.com/sdk/docs/install"
     gcloud auth list --filter='status:ACTIVE' --format='value(account)' 2>/dev/null | grep -q . || \
-        die "gcloud is not authenticated — run: gcloud auth login"
+        die "gcloud is not authenticated - run: gcloud auth login"
 }
 
 ensure_gh() {
     command -v gh >/dev/null 2>&1 || \
-        die "gh not found — install: brew install gh  (or https://cli.github.com)"
+        die "gh not found - install: brew install gh  (or https://cli.github.com)"
     gh auth status >/dev/null 2>&1 || \
-        die "gh is not authenticated — run: gh auth login"
+        die "gh is not authenticated - run: gh auth login"
 }
 
 # ── GCP backend ──────────────────────────────────────────────────────────────
@@ -200,11 +200,11 @@ cleanup() {
 }
 
 capture_stdin() {
-    [[ -t 0 ]] && die "stdin is a TTY — pipe a value in, e.g. 'pbpaste | secret-mngr set NAME'"
+    [[ -t 0 ]] && die "stdin is a TTY - pipe a value in, e.g. 'pbpaste | secret-mngr set NAME'"
     TMP=$(mktemp)
     trap cleanup EXIT
     cat > "$TMP"
-    [[ -s "$TMP" ]] || die "stdin was empty — refusing to set an empty secret"
+    [[ -s "$TMP" ]] || die "stdin was empty - refusing to set an empty secret"
 }
 
 # ── flag parsing ─────────────────────────────────────────────────────────────
@@ -311,7 +311,7 @@ status_all() {
 
     # Union by lowercased name; GH names get downcased so `FOO_BAR` in GH
     # lines up with `foo_bar` in GCP. Plain newline-delimited strings + grep
-    # rather than associative arrays — keeps this bash 3.2-compatible (macOS).
+    # rather than associative arrays - keeps this bash 3.2-compatible (macOS).
     local gcp_names gh_names_raw gh_names_lc all
     gcp_names=$(gcp_list "$project" | grep -v '^$' || true)
     gh_names_raw=$(gh_list "$repo" | grep -v '^$' || true)
