@@ -1,0 +1,68 @@
+name: Update utils submodules
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Report updates without creating commits
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: utils-updater-${{ github.event_name == 'pull_request' && github.ref || (github.event_name == 'workflow_dispatch' && inputs.dry_run && 'dry-run' || 'write') }}
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: github.repository == 'synthlabs/utils'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.sha || 'main' }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+
+      - name: Test updater
+        run: node --test scripts/update-utils-submodules.test.mjs
+
+      - name: Read consumer registry
+        id: consumers
+        run: echo "repositories=$(node scripts/update-utils-submodules.mjs --list-repositories)" >> "$GITHUB_OUTPUT"
+
+      - name: Create updater token
+        id: app-token
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          client-id: ${{ vars.UTILS_UPDATER_CLIENT_ID }}
+          private-key: ${{ secrets.UTILS_UPDATER_PRIVATE_KEY }}
+          owner: synthlabs
+          repositories: ${{ steps.consumers.outputs.repositories }}
+          permission-contents: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'read' || 'write' }}
+
+      - name: Update consumers
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          UTILS_READ_TOKEN: ${{ github.token }}
+          UTILS_UPDATER_APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        shell: bash
+        run: |
+          flags=(--write)
+          if [[ "$DRY_RUN" == true ]]; then
+            flags=(--dry-run)
+          fi
+          node scripts/update-utils-submodules.mjs "${flags[@]}" --target-sha "$(git rev-parse HEAD)"
