@@ -13,13 +13,18 @@ ssh_dir=
 git_user_name=
 git_user_email=
 container_runtime=docker
+check_access=()
 
 usage() {
-  echo "usage: $0 --project-root PATH --package PATH --release-tag TAG --pkgver VERSION --pkgrel NUMBER --aur-repository URL --ssh-dir PATH --git-user-name NAME --git-user-email EMAIL [--container-runtime COMMAND]" >&2
+  echo "usage: $0 --project-root PATH --package PATH --release-tag TAG --pkgver VERSION --pkgrel NUMBER --aur-repository URL --ssh-dir PATH --git-user-name NAME --git-user-email EMAIL [--container-runtime COMMAND] [--check-access]" >&2
 }
 
 while (( $# > 0 )); do
   case "$1" in
+    --check-access)
+      check_access=(--check-access)
+      shift
+      ;;
     --project-root)
       project_root="${2:-}"
       shift 2
@@ -98,6 +103,7 @@ fi
   --workdir /workspace \
   archlinux:base-devel \
   bash /tauri-packaging/aur/container-entrypoint.sh \
+    "${check_access[@]}" \
     --project-root /workspace \
     --package "${container_package_path}" \
     --release-tag "${release_tag}" \

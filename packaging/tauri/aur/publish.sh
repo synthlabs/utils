@@ -10,13 +10,18 @@ pkgrel=
 aur_repository=
 git_user_name=
 git_user_email=
+check_access=0
 
 usage() {
-  echo "usage: $0 --project-root PATH --package PATH --release-tag TAG --pkgver VERSION --pkgrel NUMBER --aur-repository URL --git-user-name NAME --git-user-email EMAIL" >&2
+  echo "usage: $0 --project-root PATH --package PATH --release-tag TAG --pkgver VERSION --pkgrel NUMBER --aur-repository URL --git-user-name NAME --git-user-email EMAIL [--check-access]" >&2
 }
 
 while (( $# > 0 )); do
   case "$1" in
+    --check-access)
+      check_access=1
+      shift
+      ;;
     --project-root)
       project_root="${2:-}"
       shift 2
@@ -63,6 +68,12 @@ fi
 
 project_root="$(cd -- "${project_root}" && pwd)"
 package_path="$(realpath -e -- "${package_path}")"
+if (( check_access )); then
+  git ls-remote "${aur_repository}" >/dev/null
+  echo 'AUR SSH access verified without publishing'
+  exit 0
+fi
+
 template="${project_root}/packaging/aur/PKGBUILD.in"
 aur_dir="$(mktemp -d "${TMPDIR:-/tmp}/tauri-packaging-aur.XXXXXXXX")"
 push_output="$(mktemp "${TMPDIR:-/tmp}/tauri-packaging-aur-push.XXXXXXXX.log")"

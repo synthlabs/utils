@@ -36,3 +36,15 @@ _tauri_smoke_env=('WEBKIT_DISABLE_COMPOSITING_MODE=1')
 
 The shared Arch helpers set `TAURI_PACKAGING_SOURCE_DIR`, `TAURI_PACKAGING_PKGVER`, and
 `TAURI_PACKAGING_PKGREL` while evaluating and building the local PKGBUILD.
+
+## AUR SSH validation
+
+`aur/container-publish.sh --check-access` accepts the same arguments as publication and runs
+only `git ls-remote` after configuring the container account and SSH files. It does not create
+commits or push. The account's registered home and `HOME` both point to the temporary builder
+home, where the supplied SSH directory is installed with private permissions.
+
+Run `bash utils/packaging/tauri/aur/container-ssh.test.sh` from a consuming checkout to test new
+and existing container accounts against a local SSH server. The fixtures verify trusted access,
+reject a different host key, and leave the empty remote unchanged. Docker is required;
+`CONTAINER_RUNTIME` can select another compatible container command.

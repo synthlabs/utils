@@ -162,11 +162,7 @@ export async function checkForAppUpdates(
 				event.preventDefault();
 
 				if (updateAction.kind === 'external') {
-					await openExternalUpdateUrl(
-						updateAction.url,
-						openReleaseNotes,
-						options.onError
-					);
+					await openExternalUpdateUrl(updateAction.url, openReleaseNotes, options.onError);
 					return;
 				}
 
@@ -225,13 +221,7 @@ async function installUpdate(
 					lastPercent = percent;
 					toast.loading(
 						copy.downloadingProgress(percent),
-						downloadingToastOptions(
-							toastId,
-							copy,
-							releaseUrl,
-							openReleaseNotes,
-							onError
-						)
+						downloadingToastOptions(toastId, copy, releaseUrl, openReleaseNotes, onError)
 					);
 				}
 

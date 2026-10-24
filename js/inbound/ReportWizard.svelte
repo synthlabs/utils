@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount, untrack, type Snippet } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 	import Logger from '$utils/log';
 	import {
 		inboundCapabilities,
@@ -48,7 +49,7 @@
 	type PreviewStep = 'system' | 'build' | 'log' | 'config' | 'error';
 	const isPreview = (step: StepId): step is PreviewStep =>
 		['system', 'build', 'log', 'config', 'error'].includes(step);
-	const loaded = new Set<PreviewStep>(initialError ? ['error'] : []);
+	const loaded = new SvelteSet<PreviewStep>(initialError ? ['error'] : []);
 	let system = $state<SystemInfo | null>(null);
 	let build = $state<BuildInfo | null>(null);
 	let log = $state<LogPreview | null>(null);
@@ -64,9 +65,7 @@
 	let request = 0;
 	const progressSteps = $derived(wizard.visibleSteps());
 	const progressIndex = $derived(progressSteps.indexOf(wizard.step));
-	const progressPosition = $derived(
-		progressIndex >= 0 ? progressIndex : progressSteps.length - 1
-	);
+	const progressPosition = $derived(progressIndex >= 0 ? progressIndex : progressSteps.length - 1);
 
 	async function load(step: PreviewStep | 'capabilities') {
 		const current = ++request;
@@ -185,9 +184,7 @@
 							disabled:
 								busy ||
 								loading ||
-								(!!failure &&
-									(failure.step === 'capabilities' ||
-										wizard.include[failure.step])),
+								(!!failure && (failure.step === 'capabilities' || wizard.include[failure.step])),
 							onclick: () => wizard.next()
 						}
 	);
@@ -370,8 +367,7 @@
 		{@render button({
 			kind: 'back',
 			label: text.back,
-			disabled:
-				loading || busy || ['username', 'sending', 'done', 'failed'].includes(wizard.step),
+			disabled: loading || busy || ['username', 'sending', 'done', 'failed'].includes(wizard.step),
 			onclick: () => wizard.back()
 		})}
 		{@render button(nextAction)}
