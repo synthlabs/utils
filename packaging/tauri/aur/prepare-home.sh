@@ -29,6 +29,7 @@ fi
 install -d -m755 -o "${build_user}" -g "${build_group}" "${build_home}"
 install -d -m700 -o "${build_user}" -g "${build_group}" "${build_home}/.ssh"
 cp -a "${ssh_directory}/." "${build_home}/.ssh/"
+chmod 700 "${build_home}/.ssh"
 find "${build_home}/.ssh" -type f -exec chmod 600 {} +
 chown -R "${build_user}:${build_group}" "${build_home}/.ssh"
 printf '%s\n' "${build_user}"

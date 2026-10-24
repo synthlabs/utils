@@ -25,6 +25,7 @@ usermod --password '*' fixture-aur
 git init --bare "${fixtures}/remote.git"
 chown -R fixture-aur:fixture-aur "${fixtures}/remote.git"
 mkdir "${fixtures}/client"
+chmod 755 "${fixtures}/client"
 ssh-keygen -q -t ed25519 -N '' -f "${fixtures}/host"
 ssh-keygen -q -t ed25519 -N '' -f "${fixtures}/wrong-host"
 ssh-keygen -q -t ed25519 -N '' -f "${fixtures}/client/id_ed25519"
