@@ -39,7 +39,7 @@ export function createGhApi({ env = process.env, execute = spawnSync } = {}) {
     if (result.error) throw new GitHubApiError(result.error.message);
     if (result.status !== 0) {
       let response;
-      try { response = JSON.parse(result.stdout); } catch {}
+      try { response = JSON.parse(result.stdout); } catch { response = undefined; }
       const status = Number(response?.status || result.stderr?.match(/\(HTTP (\d{3})\)/)?.[1]) || undefined;
       throw new GitHubApiError(response?.message || result.stderr?.trim() || `gh exited ${result.status}`, status);
     }

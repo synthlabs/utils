@@ -1,12 +1,7 @@
 import { paraglideVitePlugin } from '@inlang/paraglide-js';
 
 export type ParaglideStrategy =
-	| 'cookie'
-	| 'url'
-	| 'localStorage'
-	| 'preferredLanguage'
-	| 'baseLocale'
-	| 'globalVariable';
+	'cookie' | 'url' | 'localStorage' | 'preferredLanguage' | 'baseLocale' | 'globalVariable';
 
 export interface DefineParaglideOptions {
 	/** Path to the inlang project. Defaults to `./project.inlang`. */

@@ -9,13 +9,18 @@ pkgrel=
 aur_repository=
 git_user_name=
 git_user_email=
+check_access=()
 
 usage() {
-  echo "usage: $0 --project-root PATH --package PATH --release-tag TAG --pkgver VERSION --pkgrel NUMBER --aur-repository URL --git-user-name NAME --git-user-email EMAIL" >&2
+  echo "usage: $0 --project-root PATH --package PATH --release-tag TAG --pkgver VERSION --pkgrel NUMBER --aur-repository URL --git-user-name NAME --git-user-email EMAIL [--check-access]" >&2
 }
 
 while (( $# > 0 )); do
   case "$1" in
+    --check-access)
+      check_access=(--check-access)
+      shift
+      ;;
     --project-root)
       project_root="${2:-}"
       shift 2
@@ -64,28 +69,15 @@ pacman-key --init
 pacman-key --populate archlinux
 pacman -Syu --needed --noconfirm git openssh
 
-build_gid="${HOST_GID:-1000}"
-build_uid="${HOST_UID:-1000}"
-build_group="$(getent group "${build_gid}" | cut -d: -f1 || true)"
-if [[ -z "${build_group}" ]]; then
-  build_group=builder
-  groupadd --gid "${build_gid}" "${build_group}"
-fi
-
-build_user="$(getent passwd "${build_uid}" | cut -d: -f1 || true)"
-if [[ -z "${build_user}" ]]; then
-  build_user=builder
-  useradd --uid "${build_uid}" --gid "${build_group}" --create-home "${build_user}"
-fi
-
 build_home=/tmp/tauri-packaging-builder-home
-install -d -m755 -o "${build_user}" -g "${build_group}" "${build_home}"
-install -d -m700 -o "${build_user}" -g "${build_group}" "${build_home}/.ssh"
-cp -a /run/aur-ssh/. "${build_home}/.ssh/"
-chown -R "${build_user}:${build_group}" "${build_home}/.ssh"
+build_user="$(
+  bash /tauri-packaging/aur/prepare-home.sh \
+    "${HOST_UID:-1000}" "${HOST_GID:-1000}" "${build_home}" /run/aur-ssh
+)"
 
 runuser -u "${build_user}" -- env HOME="${build_home}" \
   /tauri-packaging/aur/publish.sh \
+    "${check_access[@]}" \
     --project-root "${project_root}" \
     --package "${package_path}" \
     --release-tag "${release_tag}" \

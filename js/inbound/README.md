@@ -5,7 +5,7 @@ opt into custom presentation with `ErrorController` and `connectErrorCapture`.
 
 ```ts
 const errors = new ErrorController({
-  log: error => logHandledError(error.message, error.target ?? 'app')
+	log: (error) => logHandledError(error.message, error.target ?? 'app')
 });
 const unsubscribe = errors.subscribe(render);
 const stopTimers = errors.start();

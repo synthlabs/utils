@@ -3,7 +3,7 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-bash -n \
+for script in \
   "${script_dir}/build.sh" \
   "${script_dir}/install.sh" \
   "${script_dir}/platform.sh" \
@@ -15,11 +15,17 @@ bash -n \
   "${script_dir}/arch/verify-installed.sh" \
   "${script_dir}/aur/container-entrypoint.sh" \
   "${script_dir}/aur/container-publish.sh" \
+  "${script_dir}/aur/container-ssh.test.sh" \
+  "${script_dir}/aur/prepare-home.sh" \
+  "${script_dir}/aur/ssh-home.test.sh" \
   "${script_dir}/aur/publish.sh" \
   "${script_dir}/aur/render.sh" \
   "${script_dir}/aur/render.test.sh" \
   "${script_dir}/aur/version-is-newer.sh" \
   "${script_dir}/aur/version-is-newer.test.sh"
+do
+  bash -n "${script}"
+done
 
 "${script_dir}/install.test.sh"
 

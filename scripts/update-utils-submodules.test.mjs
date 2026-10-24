@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import {
   createGhApi, formatSummary, GitHubApiError, parseArguments, propagate,
   readRegistry, resolveTarget, SOURCE_REPOSITORY, SUBMODULE_URL,
@@ -346,7 +347,7 @@ test('CLI defaults to dry run and refuses ambiguous modes and malformed argument
 });
 
 test('the CLI exits unsuccessfully before network access if write credentials are missing', () => {
-  const result = spawnSync(process.execPath, [new URL('./update-utils-submodules.mjs', import.meta.url).pathname, '--write'], {
+  const result = spawnSync(process.execPath, [fileURLToPath(new URL('./update-utils-submodules.mjs', import.meta.url)), '--write'], {
     encoding: 'utf8', env: { ...process.env, GH_TOKEN: '', UTILS_UPDATER_APP_SLUG: '' },
   });
   assert.equal(result.status, 1);

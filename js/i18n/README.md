@@ -9,12 +9,12 @@ This package is consumed via pnpm `link:` (always-symlink), no publish:
 ```jsonc
 // in your app's package.json
 {
-  "dependencies": {
-    "@synthlabs/i18n": "link:../utils/js/i18n",
-  },
-  "devDependencies": {
-    "@inlang/paraglide-js": "^2.16.0",
-  },
+	"dependencies": {
+		"@synthlabs/i18n": "link:../utils/js/i18n"
+	},
+	"devDependencies": {
+		"@inlang/paraglide-js": "^2.16.0"
+	}
 }
 ```
 
@@ -26,30 +26,30 @@ The `@inlang/paraglide-js` peerDep belongs to the consuming app - it owns the ge
 
 ```ts
 // vite.config.ts
-import { sveltekit } from "@sveltejs/kit/vite";
-import { defineConfig } from "vite";
-import { defineParaglide } from "@synthlabs/i18n";
+import { sveltekit } from '@sveltejs/kit/vite';
+import { defineConfig } from 'vite';
+import { defineParaglide } from '@synthlabs/i18n';
 
 export default defineConfig({
-  plugins: [
-    sveltekit(),
-    defineParaglide(), // defaults: project ./project.inlang, outdir ./src/lib/paraglide
-  ],
+	plugins: [
+		sveltekit(),
+		defineParaglide() // defaults: project ./project.inlang, outdir ./src/lib/paraglide
+	]
 });
 ```
 
 Default strategy is `['localStorage', 'preferredLanguage', 'baseLocale']` - right for desktop apps. Override for static sites with locale-prefixed URLs:
 
 ```ts
-defineParaglide({ strategy: ["url", "cookie", "baseLocale"] });
+defineParaglide({ strategy: ['url', 'cookie', 'baseLocale'] });
 ```
 
 ### OS-locale detection
 
 ```ts
-import { detectOsLocale } from "@synthlabs/i18n";
+import { detectOsLocale } from '@synthlabs/i18n';
 
-const locale = detectOsLocale(["en", "ru"], "en");
+const locale = detectOsLocale(['en', 'ru'], 'en');
 // "en-US" → "en", "ru-RU" → "ru", "de-DE" → "en" (fallback)
 ```
 
@@ -104,9 +104,9 @@ Validates that every `messages/<locale>.json` has the same key set as the base l
 ```jsonc
 // package.json
 {
-  "scripts": {
-    "check": "svelte-kit sync && svelte-check && i18n-lint ./messages",
-  },
+	"scripts": {
+		"check": "svelte-kit sync && svelte-check && i18n-lint ./messages"
+	}
 }
 ```
 
