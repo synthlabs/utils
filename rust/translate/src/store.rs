@@ -6,11 +6,11 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    catalog::{supported_pair, POINTER_LIMIT},
+    catalog::{supported_pair, CATALOG_LIMIT, POINTER_LIMIT},
     engine::verify_artifacts,
     filesystem::check_tree,
     CatalogCache, CatalogError, CatalogModel, CatalogSnapshot, LanguagePair, LoadMode,
-    ModelArtifact, ModelDescriptor, TranslationError,
+    ModelArtifact, ModelDescriptor, Sha256Digest, TranslationError,
 };
 
 pub const INSTALL_MANIFEST_FILENAME: &str = "install.json";
@@ -25,6 +25,22 @@ pub enum StoreError {
     NotInstalled(LanguagePair),
     #[error("unmanaged installation: {0}")]
     Unmanaged(String),
+    #[error("installation recovery required for {pair:?}: {detail}")]
+    RecoveryRequired { pair: LanguagePair, detail: String },
+    #[error("installation cleanup pending for {pair:?}: {detail}")]
+    CleanupPending { pair: LanguagePair, detail: String },
+    #[error("cannot read installation metadata at {}: {source}", path.display())]
+    MetadataIo {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("unmanaged downloads for {pair:?} at {}: {detail}; close store users, move this directory outside the store, then reopen and retry", directory.display())]
+    UnmanagedDownloads {
+        pair: LanguagePair,
+        directory: PathBuf,
+        detail: String,
+    },
     #[error("installation filesystem error: {0}")]
     Io(#[from] std::io::Error),
     #[error(transparent)]
@@ -34,12 +50,12 @@ pub enum StoreError {
 }
 
 /// Installer handoff: retain the referenced snapshot before publishing this file.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InstallationManifest {
     schema_version: u32,
     source: String,
     target: String,
-    catalog_sha256: String,
+    pub(crate) catalog_sha256: String,
     model_id: String,
 }
 
@@ -61,6 +77,7 @@ pub enum InstallationState {
     PresentUnverified,
     Incomplete,
     Invalid,
+    Unavailable,
     Unmanaged,
     Busy,
 }
@@ -71,7 +88,7 @@ pub struct InventoryEntry {
     pub pair: Option<LanguagePair>,
     pub state: InstallationState,
     pub installed: Option<CatalogModel>,
-    /// None if no current catalog was supplied, or this is an unmanaged folder.
+    /// None when current or installed catalog metadata is unavailable.
     pub matches_current_catalog: Option<bool>,
     pub detail: Option<String>,
 }
@@ -104,7 +121,8 @@ impl ModelMutationGuard {
 
 #[derive(Clone, Debug)]
 pub struct ModelStore {
-    cache: CatalogCache,
+    pub(crate) cache: CatalogCache,
+    recovery: crate::RecoveryReport,
 }
 
 impl ModelStore {
@@ -112,7 +130,16 @@ impl ModelStore {
         let cache = CatalogCache::open(root)?;
         cache.root.directory(Path::new("models"))?;
         cache.root.directory(Path::new(".locks"))?;
-        Ok(Self { cache })
+        let mut store = Self {
+            cache,
+            recovery: crate::RecoveryReport::default(),
+        };
+        store.recovery = crate::installation::recover_on_open(&store)?;
+        Ok(store)
+    }
+
+    pub fn recovery_report(&self) -> &crate::RecoveryReport {
+        &self.recovery
     }
 
     pub fn root(&self) -> &Path {
@@ -124,7 +151,7 @@ impl ModelStore {
         Ok(())
     }
 
-    fn relative(pair: LanguagePair) -> Result<PathBuf, StoreError> {
+    pub(crate) fn relative(pair: LanguagePair) -> Result<PathBuf, StoreError> {
         if !supported_pair(pair) {
             return Err(StoreError::UnsupportedPair(pair));
         }
@@ -153,13 +180,32 @@ impl ModelStore {
         }
     }
 
-    fn installed(&self, pair: LanguagePair) -> Result<CatalogModel, StoreError> {
+    pub(crate) fn read_metadata(
+        &self,
+        relative: &Path,
+        limit: usize,
+    ) -> Result<Vec<u8>, StoreError> {
+        self.cache
+            .root
+            .read(relative, limit)
+            .map_err(|source| StoreError::MetadataIo {
+                path: self.root().join(relative),
+                source,
+            })
+    }
+
+    fn manifest(&self, pair: LanguagePair) -> Result<InstallationManifest, StoreError> {
         let directory = self.directory(pair)?;
         match fs::symlink_metadata(&directory) {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 return Err(StoreError::NotInstalled(pair))
             }
-            Err(error) => return Err(error.into()),
+            Err(source) => {
+                return Err(StoreError::MetadataIo {
+                    path: directory,
+                    source,
+                })
+            }
             Ok(metadata) if !metadata.is_dir() => {
                 return Err(StoreError::Unmanaged(
                     "installation is not a directory".into(),
@@ -167,31 +213,70 @@ impl ModelStore {
             }
             Ok(_) => {}
         }
-        let read = || -> Result<CatalogModel, Box<dyn std::error::Error>> {
-            let bytes = self.cache.root.read(
-                &Self::relative(pair)?.join(INSTALL_MANIFEST_FILENAME),
-                POINTER_LIMIT,
-            )?;
-            let manifest: InstallationManifest = serde_json::from_slice(&bytes)?;
-            if manifest.schema_version != 1
-                || manifest.source != pair.source.as_str()
-                || manifest.target != pair.target.as_str()
-            {
-                return Err("invalid installation schema or language pair".into());
-            }
-            let snapshot = self.cache.load_snapshot(&manifest.catalog_sha256)?;
-            let model = snapshot
-                .model(pair)
-                .ok_or("installation references a missing catalog model")?;
-            if model.id() != manifest.model_id {
-                return Err("installation revision does not match pinned catalog".into());
-            }
-            Ok(model.clone())
+        let relative = Self::relative(pair)?.join(INSTALL_MANIFEST_FILENAME);
+        let bytes = self
+            .read_metadata(&relative, POINTER_LIMIT)
+            .map_err(|error| match error {
+                StoreError::MetadataIo { ref source, .. }
+                    if source.kind() == std::io::ErrorKind::NotFound =>
+                {
+                    StoreError::Unmanaged(error.to_string())
+                }
+                error => error,
+            })?;
+        let invalid_manifest = |detail| {
+            StoreError::Unmanaged(format!(
+                "{}: {detail}",
+                self.root().join(&relative).display()
+            ))
         };
-        read().map_err(|error| StoreError::Unmanaged(error.to_string()))
+        let manifest: InstallationManifest =
+            serde_json::from_slice(&bytes).map_err(|error| invalid_manifest(error.to_string()))?;
+        let id_prefix = format!("mozilla-{}-{}-", pair.source, pair.target);
+        if manifest.schema_version != 1
+            || manifest.source != pair.source.as_str()
+            || manifest.target != pair.target.as_str()
+            || manifest.catalog_sha256.parse::<Sha256Digest>().is_err()
+            || manifest
+                .model_id
+                .strip_prefix(&id_prefix)
+                .and_then(|digest| digest.parse::<Sha256Digest>().ok())
+                .is_none()
+        {
+            return Err(invalid_manifest(
+                "invalid installation schema, language pair, or identity".into(),
+            ));
+        }
+        Ok(manifest)
     }
 
-    fn descriptor(&self, model: &CatalogModel) -> Result<ModelDescriptor, StoreError> {
+    pub(crate) fn installed(&self, pair: LanguagePair) -> Result<CatalogModel, StoreError> {
+        let manifest = self.manifest(pair)?;
+        let digest: Sha256Digest = manifest
+            .catalog_sha256
+            .parse()
+            .expect("manifest digest was validated");
+        let relative = Path::new("catalog").join(format!("{digest}.json"));
+        let bytes = self.read_metadata(&relative, CATALOG_LIMIT)?;
+        let snapshot = CatalogSnapshot::from_bytes(&bytes, &digest.to_string())?;
+        let invalid = |detail: &str| {
+            StoreError::Catalog(CatalogError::Invalid(format!(
+                "{}: {detail}",
+                self.root().join(&relative).display()
+            )))
+        };
+        let model = snapshot
+            .model(pair)
+            .ok_or_else(|| invalid("installation references a missing catalog model"))?;
+        if model.id() != manifest.model_id {
+            return Err(invalid(
+                "installation revision does not match pinned catalog",
+            ));
+        }
+        Ok(model.clone())
+    }
+
+    pub(crate) fn descriptor(&self, model: &CatalogModel) -> Result<ModelDescriptor, StoreError> {
         let base = Self::relative(model.pair())?;
         let artifact = |file: &crate::CatalogArtifact| -> Result<ModelArtifact, StoreError> {
             Ok(ModelArtifact {
@@ -237,7 +322,8 @@ impl ModelStore {
     /// Returns false for an absent installation. Corrupt artifacts remain removable.
     pub fn remove(&self, pair: LanguagePair) -> Result<bool, StoreError> {
         let guard = self.exclusive(pair)?;
-        match self.installed(pair) {
+        crate::installation::recover_transaction(self, pair)?.require_clean(pair)?;
+        match self.manifest(pair) {
             Err(StoreError::NotInstalled(_)) => return Ok(false),
             result => {
                 result?;
@@ -277,7 +363,7 @@ impl ModelStore {
         Ok(true)
     }
 
-    fn check_sizes(&self, model: &CatalogModel) -> Result<(), StoreError> {
+    pub(crate) fn check_sizes(&self, model: &CatalogModel) -> Result<(), StoreError> {
         let base = Self::relative(model.pair())?;
         for file in model.required_files() {
             let path = self.cache.root.checked(&base.join(&file.filename))?;
@@ -346,6 +432,14 @@ impl ModelStore {
                 Err(StoreError::Unmanaged(detail)) => {
                     entry.state = InstallationState::Unmanaged;
                     entry.detail = Some(detail);
+                }
+                Err(StoreError::MetadataIo { path, source }) => {
+                    entry.state = match source.kind() {
+                        std::io::ErrorKind::NotFound => InstallationState::Incomplete,
+                        std::io::ErrorKind::InvalidData => InstallationState::Invalid,
+                        _ => InstallationState::Unavailable,
+                    };
+                    entry.detail = Some(StoreError::MetadataIo { path, source }.to_string());
                 }
                 Err(error) => {
                     entry.state = InstallationState::Invalid;

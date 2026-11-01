@@ -12,6 +12,7 @@ resolver = "2"
 [features]
 default = []
 catalog-http = ["dep:reqwest"]
+model-downloads = ["dep:reqwest", "dep:tokio", "dep:zstd"]
 
 [dependencies]
 fxtranslate = { version = "=0.5.0", default-features = false, features = ["portable", "lean-embed", "mmap", "threads"] }
@@ -21,7 +22,9 @@ serde_json = "1"
 sha2 = "0.10"
 tempfile = "3"
 thiserror = "2"
+tokio = { version = "1", optional = true, features = ["rt", "sync", "time", "macros"] }
 whatlang = "=0.18.0"
+zstd = { version = "0.13.3", optional = true, default-features = false }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

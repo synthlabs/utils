@@ -9,15 +9,24 @@ const args = process.argv.slice(2);
 let models;
 let hostedModels;
 let liveCatalog = false;
+let downloadModel;
 
 for (let index = 0; index < args.length; index++) {
 	if (args[index] === '--help') {
 		console.log(
-			'Usage: node scripts/check-translate.mjs [--models <directory>] [--hosted-models <directory>] [--live-catalog]'
+			'Usage: node scripts/check-translate.mjs [--models <directory>] [--hosted-models <directory>] [--live-catalog] [--download-model <rus-eng|eng-rus>]'
 		);
 		process.exit(0);
 	}
 	const option = args[index];
+	if (option === '--download-model') {
+		if (downloadModel || !['rus-eng', 'eng-rus'].includes(args[index + 1])) {
+			console.error('--download-model requires exactly one direction: rus-eng or eng-rus');
+			process.exit(2);
+		}
+		downloadModel = args[++index];
+		continue;
+	}
 	if (option === '--live-catalog' && !liveCatalog) {
 		liveCatalog = true;
 		continue;
@@ -43,7 +52,12 @@ for (let index = 0; index < args.length; index++) {
 }
 
 const commands = [['fmt', '--all', '--', '--check']];
-for (const features of [[], ['--all-features']]) {
+for (const features of [
+	[],
+	['--features', 'catalog-http'],
+	['--features', 'model-downloads'],
+	['--all-features']
+]) {
 	commands.push(
 		['clippy', '--locked', '--all-targets', ...features, '--', '-D', 'warnings'],
 		['test', '--locked', ...features],
@@ -87,6 +101,20 @@ if (liveCatalog) {
 		'--nocapture'
 	]);
 }
+if (downloadModel) {
+	commands.push([
+		'test',
+		'--locked',
+		'--release',
+		'--all-features',
+		'--test',
+		'download_models',
+		'--',
+		'--ignored',
+		'--nocapture',
+		'--test-threads=1'
+	]);
+}
 
 for (const command of commands) {
 	console.log(`cargo ${command.join(' ')}`);
@@ -96,7 +124,8 @@ for (const command of commands) {
 		env: {
 			...process.env,
 			...(models ? { SYNTH_TRANSLATE_TEST_MODELS: models } : {}),
-			...(hostedModels ? { SYNTH_TRANSLATE_HOSTED_MODELS: hostedModels } : {})
+			...(hostedModels ? { SYNTH_TRANSLATE_HOSTED_MODELS: hostedModels } : {}),
+			SYNTH_TRANSLATE_DOWNLOAD_PAIR: downloadModel ?? ''
 		}
 	});
 	if (result.error) console.error(result.error.message);

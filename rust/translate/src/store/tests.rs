@@ -163,19 +163,142 @@ fn guards_exclude_writers_and_survive_lazy_registration_and_drop() {
 }
 
 #[test]
-fn pinned_snapshot_corruption_does_not_make_installation_trusted() {
+fn owned_installations_remain_removable_without_usable_pinned_metadata() {
+    for failure in ["missing", "corrupt", "mismatched"] {
+        let (_directory, store, catalog) = fixture();
+        let snapshot = store
+            .root()
+            .join("catalog")
+            .join(format!("{}.json", catalog.sha256()));
+        match failure {
+            "missing" => fs::remove_file(snapshot).unwrap(),
+            "corrupt" => fs::write(snapshot, b"{}").unwrap(),
+            _ => {
+                let manifest_path = store
+                    .directory(RU_EN)
+                    .unwrap()
+                    .join(INSTALL_MANIFEST_FILENAME);
+                let mut manifest = InstallationManifest::for_model(catalog.model(RU_EN).unwrap());
+                manifest.model_id = format!("mozilla-rus-eng-{}", "0".repeat(64));
+                fs::write(manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+            }
+        }
+        assert_eq!(
+            state(&store),
+            if failure == "missing" {
+                InstallationState::Incomplete
+            } else {
+                InstallationState::Invalid
+            }
+        );
+        assert!(store.acquire(RU_EN).is_err());
+        assert!(store.remove(RU_EN).unwrap());
+        assert_eq!(state(&store), InstallationState::NotInstalled);
+    }
+}
+
+#[test]
+fn removal_requires_a_valid_pair_specific_ownership_manifest() {
     let (_directory, store, catalog) = fixture();
-    fs::write(
+    let path = store
+        .directory(RU_EN)
+        .unwrap()
+        .join(INSTALL_MANIFEST_FILENAME);
+    let valid = serde_json::to_value(InstallationManifest::for_model(
+        catalog.model(RU_EN).unwrap(),
+    ))
+    .unwrap();
+    for (field, value) in [
+        ("schema_version", serde_json::json!(2)),
+        ("source", serde_json::json!("eng")),
+        ("target", serde_json::json!("rus")),
+        ("catalog_sha256", serde_json::json!("../outside")),
+        ("model_id", serde_json::json!("unknown")),
+        (
+            "model_id",
+            serde_json::json!(format!("mozilla-eng-rus-{}", "0".repeat(64))),
+        ),
+    ] {
+        let mut invalid = valid.clone();
+        invalid[field] = value;
+        fs::write(&path, serde_json::to_vec(&invalid).unwrap()).unwrap();
+        assert_eq!(state(&store), InstallationState::Unmanaged, "{field}");
+        assert!(matches!(store.remove(RU_EN), Err(StoreError::Unmanaged(_))));
+        assert!(path.exists());
+    }
+    fs::remove_file(&path).unwrap();
+    assert_eq!(state(&store), InstallationState::Unmanaged);
+    let error = store.remove(RU_EN).unwrap_err();
+    assert!(matches!(error, StoreError::Unmanaged(_)));
+    assert!(error.to_string().contains(&path.display().to_string()));
+    assert!(store.directory(RU_EN).unwrap().exists());
+}
+
+#[cfg(windows)]
+#[test]
+fn inaccessible_metadata_is_unavailable_and_preserves_the_io_source() {
+    use std::os::windows::fs::OpenOptionsExt;
+    let (_directory, store, catalog) = fixture();
+    for path in [
+        store
+            .directory(RU_EN)
+            .unwrap()
+            .join(INSTALL_MANIFEST_FILENAME),
         store
             .root()
             .join("catalog")
             .join(format!("{}.json", catalog.sha256())),
-        b"{}",
-    )
-    .unwrap();
-    assert_eq!(state(&store), InstallationState::Unmanaged);
-    assert!(store.acquire(RU_EN).is_err());
-    assert!(store.remove(RU_EN).is_err());
+    ] {
+        let held = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&path)
+            .unwrap();
+        let error = match store.acquire(RU_EN) {
+            Ok(_) => panic!("inaccessible metadata was accepted"),
+            Err(error) => error,
+        };
+        match &error {
+            StoreError::MetadataIo {
+                path: actual,
+                source,
+            } => {
+                assert_eq!(actual, &path);
+                assert_eq!(source.raw_os_error(), Some(32));
+            }
+            error => panic!("unexpected error: {error}"),
+        }
+        let entry = store
+            .inventory(None)
+            .unwrap()
+            .into_iter()
+            .find(|e| e.pair == Some(RU_EN))
+            .unwrap();
+        assert_eq!(entry.state, InstallationState::Unavailable);
+        assert!(entry.detail.unwrap().contains(&path.display().to_string()));
+        drop(held);
+        assert_eq!(state(&store), InstallationState::PresentUnverified);
+        store.verify(RU_EN).unwrap();
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn removal_succeeds_with_delete_sharing_manifest_or_artifact_handles() {
+    use std::os::windows::fs::OpenOptionsExt;
+    for filename in [INSTALL_MANIFEST_FILENAME, "weights.bin"] {
+        let (_directory, store, _) = fixture();
+        let held = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0x1 | 0x2 | 0x4)
+            .open(store.directory(RU_EN).unwrap().join(filename))
+            .unwrap();
+        assert!(store.remove(RU_EN).unwrap());
+        assert_eq!(state(&store), InstallationState::NotInstalled);
+        drop(held);
+        assert!(!store.remove(RU_EN).unwrap());
+        ModelStore::open(store.root()).unwrap();
+    }
 }
 
 #[cfg(windows)]

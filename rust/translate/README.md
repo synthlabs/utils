@@ -3,7 +3,9 @@
 Synchronous, offline language detection, plain-text translation, and a local model
 store. The optional `catalog-http` feature fetches model catalog metadata. Core
 inference and the local store require neither Tauri nor an async runtime.
-**Model files are never downloaded by this crate.**
+**Model files download only through an explicitly invoked installer**, behind the
+optional `model-downloads` feature. Opening the store and all inference operations
+remain local.
 
 The initial backend is `fxtranslate = 0.5.0` with default features disabled and
 `portable`, `lean-embed`, `mmap`, and `threads` enabled. The initial validated
@@ -168,7 +170,7 @@ the same local parsing/retention operations without enabling HTTP.
 
 Catalog refresh changes availability metadata only. Installed revisions are not
 updated, removed, or downloaded. **All model-file downloads must be explicit user
-actions in the future installer.** Inventory, verification, registration, and
+actions through the installer.** Inventory, verification, registration, and
 translation never request model files.
 
 ## Managed model store
@@ -190,10 +192,16 @@ translate/
 
 There is one installed revision per direction. `inventory(current_catalog)` checks
 metadata, paths, and file sizes, returning `NotInstalled`, `PresentUnverified`,
-`Incomplete`, `Invalid`, `Unmanaged`, or `Busy`. Supplying a current catalog also
+`Incomplete`, `Invalid`, `Unavailable`, `Unmanaged`, or `Busy`. Supplying a current catalog also
 reports whether each installed revision matches it. A quick inventory does not
 claim SHA-256 verification. `verify(pair)` hashes every required artifact and
 returns its pinned metadata; this result describes that point in time.
+
+A valid ownership manifest with a missing pinned catalog is `Incomplete`; corrupt
+or mismatched pinned metadata is `Invalid`. Metadata access failures, including
+Windows sharing restrictions, are `Unavailable`. `StoreError::MetadataIo` retains
+the affected `path` and underlying I/O `source`. Missing or malformed ownership
+manifests remain `Unmanaged` and are preserved.
 
 `acquire(pair)` verifies files under a shared filesystem lock and returns an opaque
 `ModelLease`. Consume it with `core.register_stored_model(lease, load_mode)`; the
@@ -217,29 +225,125 @@ store.remove(pair)?;
 # }
 ```
 
-`remove(pair)` takes a nonblocking exclusive lock. It returns false for an absent
-installation, refuses unmanaged metadata, and can remove an identified model with
-missing/corrupt artifacts. Symlinks, Windows reparse points, traversal, and deletion
+`remove(pair)` takes a nonblocking exclusive direction lock and recovers that
+direction's pending transaction before deleting anything. Another direction's
+installation does not block removal. Pending transaction cleanup returns
+`StoreError::CleanupPending` and preserves the model until an explicit retry can
+finish cleanup. It returns false for an absent installation after recovery.
+
+Removal requires a schema-1 `install.json` matching the language pair, with valid
+catalog and model identities. That manifest is sufficient ownership evidence even
+if its pinned catalog or artifacts are missing or corrupt. Loading and replacement
+still require verified pinned catalog metadata. Symlinks, Windows reparse points, traversal, and deletion
 outside the canonical root are rejected. Unknown directories are reported and
 left untouched. Locks coordinate cooperating processes; callers must not modify
 managed files outside the store's mutation protocol.
-
-Installer handoff (installation itself is not implemented here):
-
-1. Resolve the desired revision from the catalog after an explicit user action.
-2. Retain its verified snapshot using `retain_catalog`.
-3. Acquire `exclusive(pair)` before any installation mutation or replacement;
-   hold this `ModelMutationGuard` through publication.
-4. Publish verified decompressed required files and serialize
-   `InstallationManifest::for_model(model)` as `install.json` in the managed
-   directory. The manifest schema is 1 and pins normalized source/target codes,
-   catalog digest, and immutable model ID. Download/staging/failure recovery belong
-   to the future installer; do not treat the example layout as a copying API.
 
 An older installed revision remains usable through its retained snapshot, even
 when the latest catalog changes or drops that entry. No automatic upgrade or
 version-selection interface is provided. Lock files must not be unlinked while
 the store is in use. The filesystem-lock API requires Rust 1.89 or newer.
+
+## Explicit download and installation
+
+Enable `model-downloads` for `ModelInstaller`. It is independent of `catalog-http`;
+both features are optional, and default inference and local recovery need no async
+runtime. An installer requires a caller-provided Tokio runtime with I/O and time
+enabled. It starts no background tasks on construction. There is no automatic
+download, saved consent flag, or inference-triggered repair. The consuming app must
+call `install` only in response to an explicit user action.
+
+```rust,no_run
+# #[cfg(feature = "model-downloads")]
+# async fn example(snapshot: &synth_translate::CatalogSnapshot) -> Result<(), Box<dyn std::error::Error>> {
+use synth_translate::{InstallControl, InstallPlan, Language, LanguagePair, ModelInstaller, ModelStore};
+let pair = LanguagePair { source: Language::RUSSIAN, target: Language::ENGLISH };
+let plan = InstallPlan::new(snapshot, pair)?;
+println!("Download {} bytes; install {} bytes", plan.download_bytes(), plan.installed_bytes());
+let installer = ModelInstaller::new(ModelStore::open("/application-data/translate")?)?;
+let control = InstallControl::new();
+let progress = control.subscribe();
+// Invoke after the user's explicit Download and install action.
+let installed = installer.install(plan, control.clone()).await?;
+println!("{:?}; {:?}", installed.status, progress.borrow().phase);
+// Another task may call control.cancel() while install is running.
+# Ok(())
+# }
+```
+
+`InstallPlan` pins the selected catalog snapshot, revision, required files, and byte
+totals without making requests. Catalog changes do not change an existing plan.
+One explicit call downloads, checks compressed hashes/sizes, decompresses, checks
+installed hashes/sizes, and publishes the installation. It does not load the
+translation engine. A fully verified existing revision returns `AlreadyInstalled`
+without downloading, with `cleanup_warnings` if earlier transaction cleanup is
+still pending. Repair/replacement accepts recognized managed installations;
+unidentifiable manifests or missing/corrupt pinned catalogs remain unmanaged.
+
+One persistent `.locks/install.lock` serializes installations across the canonical
+store root and cooperating processes. The direction's exclusive lock is also held
+through the operation and worker shutdown. Competing operations, registered models,
+and held leases return `Busy` before downloading. Files transfer sequentially; no
+installation queue or automatic resumption exists.
+
+Model HTTP requests are HTTPS-only, use the catalog's validated object URLs, do
+not follow redirects, and request identity encoding with automatic HTTP content
+decompression disabled. Downloads stream through bounded worker queues. Each file
+gets at most three attempts, including the first, with 1- then 2-second waits, a
+15-second connection timeout, and a 30-second read-inactivity timeout. There is no
+whole-transfer deadline. Transport/read failures and HTTP 408/500/502/503/504 retry;
+other statuses, integrity, decompression, and filesystem failures stop. Byte-range
+resumption is not implemented.
+
+`InstallControl` is single-use and cloneable. `subscribe()` exposes the latest
+`InstallProgress` through a Tokio watch receiver; it is not an event log. Progress
+includes the current phase/file/index, attempts, compressed and decompressed totals,
+reused bytes, and cumulative network traffic. `completed_download_bytes` counts
+whole verified compressed files; add `file_download_bytes` only while Downloading
+to show the current attempt. That file counter resets on retry. Installed byte
+counters follow the same completed-file/current-file convention. `network_bytes`
+includes discarded attempts and is not a completion percentage. Completion is a
+separate terminal phase, after publication.
+
+Cancellation interrupts requests, retry waits, verification, and decompression.
+It waits for worker shutdown before returning `Cancelled`. Dropping the install
+future signals cancellation; any remaining blocking worker retains the locks until
+it stops. Once Publishing begins, the transaction finishes or rolls back even if
+the caller cancels or drops the future. Use a new control for each explicit Retry.
+
+Verified compressed objects are retained in `.downloads/<pair>/<sha256>.zst` after
+failure/cancellation and are rehashed before reuse. Interrupted `.partial-*` files
+are discarded. `discard_downloads(pair)` explicitly removes retained downloads
+without removing installed models. Success deletes the temporary compressed copies
+and keeps the decompressed installed files. `cleanup_warnings` reports cleanup
+that could not finish after a successful commit.
+
+If a download directory loses both `.downloads/<pair>.json` and its `owner.json`,
+installation and explicit discard return `StoreError::UnmanagedDownloads` with
+the pair, directory, and ownership problem. The directory is preserved and reopen
+reports a warning. For manual recovery, close all store users, move the affected
+`.downloads/<pair>` directory outside the store, then reopen and explicitly retry.
+Malformed ownership records are also preserved; move any corresponding external
+`.downloads/<pair>.json` record outside the store when recovering those manually.
+There is no automatic deletion or quarantine of unknown downloads.
+
+Staged files and backups live under `.install/<pair>`. Publication uses a durable
+schema-1 journal, with an external `.install/<pair>.json` record kept until cleanup
+finishes. Existing schema-1 installation manifests and the managed model layout
+remain unchanged. On failure before commitment, rollback restores the previous
+installation or the absent state. `ModelStore::open` performs local rollback for
+uncommitted transactions and cleanup for committed transactions; it never downloads
+or publishes a staged new installation. A live installer is skipped. An unfinished
+rollback or unrecognized transaction returns `RecoveryRequired`. Once the prior
+model or absent state has been restored, leftover cleanup failures are warnings,
+as are cleanup failures after a successful commit. Recovery records remain until
+cleanup succeeds. Removal and replacement return `CleanupPending` while transaction
+cleanup is blocked; verified existing models remain usable.
+`recovery_report()` exposes rollback/cleanup results and warnings. Opening an
+already-open store does not start a recovery loop; reopen or explicitly retry an
+operation after resolving a recovery error. All mutations reject links/reparse
+points and paths outside the root. Unknown journals and unmanaged models are
+preserved. Local recovery remains available with both HTTP features disabled.
 
 ## Verification
 
@@ -256,7 +360,8 @@ From a consuming Pepo checkout, prefix the script path with `utils/`.
 The crate is its own Cargo workspace with a committed verification lockfile;
 verification does not change a consuming application's workspace or lockfile.
 The runner checks Rust formatting, Clippy, and model-free unit/integration tests
-and doctests in both debug and release profiles, with HTTP disabled and enabled.
+and doctests in both debug and release profiles, with default features,
+`catalog-http`, `model-downloads`, and both features enabled.
 HTTP tests use deterministic local servers and never contact the public service.
 Required regressions use mocks
 and synthetic artifacts with matching hashes, covering token boundaries, malformed
@@ -298,3 +403,13 @@ the supplied files unchanged.
 `--live-catalog` explicitly probes the public default metadata using the production
 HTTPS client. It fetches catalog JSON only, uses a temporary cache, and is excluded
 from routine CI. It can be combined with either local-model option.
+
+`node scripts/check-translate.mjs --download-model rus-eng` explicitly authorizes
+a real model download for that direction; `eng-rus` is the other accepted value.
+This runs an ignored end-to-end HTTPS download/install/inference test in a temporary
+store, prints the pinned model and byte totals, and cleans up after releasing the
+engine. The flag is never enabled by ordinary verification or `--live-catalog`.
+Installer regression tests use synthetic compressed artifacts and loopback HTTP,
+including cancellation, retries, corrupt downloads, replacement/repair, dropped
+futures, cross-process contention, Windows sharing violations, and process exit at
+each publication boundary. No real model is required for routine tests.
