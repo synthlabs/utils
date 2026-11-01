@@ -46,6 +46,11 @@ if (!quick) {
 if (!rustOnly) {
 	commands.push([
 		'cargo',
+		['test', '--locked', '--features', 'tauri-plugin', '--example', 'export_translate_types'],
+		crate
+	]);
+	commands.push([
+		'cargo',
 		[
 			'run',
 			'--locked',

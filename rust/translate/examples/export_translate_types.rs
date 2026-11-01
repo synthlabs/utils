@@ -3,6 +3,10 @@ use std::{env, fs, path::PathBuf};
 use specta::TypeCollection;
 use synth_translate::plugin::{dto::*, ErrorCode};
 
+fn contract_matches(actual: &str, expected: &str) -> bool {
+    actual.replace("\r\n", "\n") == expected
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut types = TypeCollection::default();
     types
@@ -32,7 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let destination = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../js/translate/types.ts");
     match env::args().nth(1).as_deref() {
         Some("--check") => {
-            if fs::read_to_string(&destination)? != output {
+            if !contract_matches(&fs::read_to_string(&destination)?, &output) {
                 return Err("translation TypeScript contract is stale; regenerate it".into());
             }
         }
@@ -44,4 +48,58 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         _ => return Err("expected --check or --write".into()),
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::contract_matches;
+
+    const CONTRACT: &str = concat!(
+        "export type PairDto = { source: string; target: string }\n",
+        "export const commands = { status: \"plugin:translate|status\" } as const;\n",
+        "export const errorCodes = [\"not_ready\", \"unavailable\"] as const;\n",
+    );
+
+    #[test]
+    fn matching_lf_contract_is_current() {
+        assert!(contract_matches(CONTRACT, CONTRACT));
+    }
+
+    #[test]
+    fn matching_crlf_contract_is_current() {
+        assert!(contract_matches(&CONTRACT.replace('\n', "\r\n"), CONTRACT));
+    }
+
+    #[test]
+    fn content_changes_are_stale_with_either_line_ending() {
+        for (original, replacement) in [
+            ("source: string", "source: number"),
+            ("plugin:translate|status", "plugin:translate|stale"),
+            ("not_ready", "stale_code"),
+        ] {
+            let changed = CONTRACT.replace(original, replacement);
+            assert_ne!(changed, CONTRACT);
+            for line_ending in ["\n", "\r\n"] {
+                assert!(
+                    !contract_matches(&changed.replace('\n', line_ending), CONTRACT),
+                    "accepted {replacement:?} with {line_ending:?} line endings"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn other_whitespace_changes_are_stale() {
+        for changed in [
+            CONTRACT.replacen('\n', " \n", 1),
+            CONTRACT.replace('\n', "\r"),
+            CONTRACT.trim_end_matches('\n').to_owned(),
+            format!("{CONTRACT}\n"),
+        ] {
+            assert!(
+                !contract_matches(&changed, CONTRACT),
+                "accepted whitespace change: {changed:?}"
+            );
+        }
+    }
 }
