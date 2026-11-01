@@ -182,8 +182,7 @@ fn cache_publication_preserves_old_snapshot_and_failed_pointer_update() {
     let second = snapshot(&value);
     cache.retain(&second).unwrap();
     assert_eq!(cache.current().unwrap().sha256(), first.sha256());
-    let lock = cache.root.lock_file("catalog.lock").unwrap();
-    lock.try_lock().unwrap();
+    let lock = FileLock::try_lock(cache.root.lock_file("catalog.lock").unwrap(), true).unwrap();
     assert!(cache.commit(&second).is_err());
     assert_eq!(cache.current().unwrap().sha256(), first.sha256());
     drop(lock);

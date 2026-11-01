@@ -3,7 +3,10 @@ use std::{collections::BTreeMap, path::Path};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::{filesystem::Root, Language, LanguagePair, Sha256Digest};
+use crate::{
+    filesystem::{FileLock, Root},
+    Language, LanguagePair, Sha256Digest,
+};
 
 #[cfg(feature = "catalog-http")]
 mod http;
@@ -451,8 +454,7 @@ impl CatalogCache {
         Ok(())
     }
     pub fn commit(&self, snapshot: &CatalogSnapshot) -> Result<(), CatalogError> {
-        let lock = self.root.lock_file("catalog.lock")?;
-        lock.try_lock()
+        let _lock = FileLock::try_lock(self.root.lock_file("catalog.lock")?, true)
             .map_err(|e| CatalogError::Io(e.to_string()))?;
         self.retain(snapshot)?;
         let bytes = serde_json::to_vec(&snapshot.pointer()).map_err(|e| invalid(e.to_string()))?;

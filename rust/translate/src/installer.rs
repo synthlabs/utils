@@ -13,8 +13,8 @@ use sha2::{Digest, Sha256};
 use tokio::sync::{mpsc, watch};
 
 use crate::{
-    installation, CatalogArtifact, CatalogModel, CatalogSnapshot, InstallationManifest,
-    LanguagePair, ModelMutationGuard, ModelStore, Sha256Digest, StoreError,
+    filesystem::FileLock, installation, CatalogArtifact, CatalogModel, CatalogSnapshot,
+    InstallationManifest, LanguagePair, ModelMutationGuard, ModelStore, Sha256Digest, StoreError,
     INSTALL_MANIFEST_FILENAME,
 };
 
@@ -265,7 +265,7 @@ struct Session {
     control: InstallControl,
     staged: PathBuf,
     downloads: PathBuf,
-    _global: File,
+    _global: FileLock,
     _direction: ModelMutationGuard,
 }
 

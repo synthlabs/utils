@@ -235,8 +235,11 @@ async fn failed_publication_keeps_prior_pointer_and_reports_refresh_error() {
     ]);
     let client = server.client(directory.path());
     client.cache.commit(&first).unwrap();
-    let lock = client.cache.root.lock_file("catalog.lock").unwrap();
-    lock.try_lock().unwrap();
+    let _lock = crate::filesystem::FileLock::try_lock(
+        client.cache.root.lock_file("catalog.lock").unwrap(),
+        true,
+    )
+    .unwrap();
     let result = client.refresh().await.unwrap();
     assert_eq!(result.freshness, CatalogFreshness::Cached);
     assert!(result.refresh_error.is_some());

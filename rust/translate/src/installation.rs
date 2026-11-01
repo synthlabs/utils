@@ -1,5 +1,5 @@
 use std::{
-    fs::{self, File, TryLockError},
+    fs::{self, TryLockError},
     path::{Path, PathBuf},
 };
 
@@ -8,8 +8,10 @@ use serde::{Deserialize, Serialize};
 #[cfg(any(test, feature = "model-downloads"))]
 use crate::filesystem::invalid;
 use crate::{
-    catalog::POINTER_LIMIT, filesystem::check_tree, InstallationManifest, Language, LanguagePair,
-    ModelStore, StoreError, INSTALL_MANIFEST_FILENAME,
+    catalog::POINTER_LIMIT,
+    filesystem::{check_tree, FileLock},
+    InstallationManifest, Language, LanguagePair, ModelStore, StoreError,
+    INSTALL_MANIFEST_FILENAME,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -53,10 +55,10 @@ pub(crate) fn area(kind: &str, pair: LanguagePair) -> PathBuf {
     Path::new(kind).join(format!("{}-{}", pair.source, pair.target))
 }
 
-pub(crate) fn global_lock(store: &ModelStore, pair: LanguagePair) -> Result<File, StoreError> {
+pub(crate) fn global_lock(store: &ModelStore, pair: LanguagePair) -> Result<FileLock, StoreError> {
     let file = store.cache.root.lock_file("install.lock")?;
-    match file.try_lock() {
-        Ok(()) => Ok(file),
+    match FileLock::try_lock(file, true) {
+        Ok(lock) => Ok(lock),
         Err(TryLockError::WouldBlock) => Err(StoreError::Busy(pair)),
         Err(TryLockError::Error(error)) => Err(error.into()),
     }
@@ -200,7 +202,7 @@ pub(crate) fn downloads(store: &ModelStore, pair: LanguagePair) -> Result<PathBu
             pair,
         };
         let bytes = serde_json::to_vec(&owner).map_err(|e| invalid(e.to_string()))?;
-        let mut file = File::create(temporary.path().join("owner.json"))?;
+        let mut file = fs::File::create(temporary.path().join("owner.json"))?;
         std::io::Write::write_all(&mut file, &bytes)?;
         file.sync_all()?;
         drop(file);
@@ -288,7 +290,7 @@ pub(crate) fn begin(
         committed: false,
     };
     let bytes = serde_json::to_vec(&journal).map_err(|e| invalid(e.to_string()))?;
-    let mut file = File::create(temporary.path().join("journal.json"))?;
+    let mut file = fs::File::create(temporary.path().join("journal.json"))?;
     std::io::Write::write_all(&mut file, &bytes)?;
     file.sync_all()?;
     drop(file);

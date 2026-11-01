@@ -1,5 +1,5 @@
 use std::{
-    fs::{self, File, TryLockError},
+    fs::{self, TryLockError},
     path::{Path, PathBuf},
 };
 
@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     catalog::{supported_pair, CATALOG_LIMIT, POINTER_LIMIT},
     engine::verify_artifacts,
-    filesystem::check_tree,
+    filesystem::{check_tree, FileLock},
     CatalogCache, CatalogError, CatalogModel, CatalogSnapshot, LanguagePair, LoadMode,
     ModelArtifact, ModelDescriptor, Sha256Digest, TranslationError,
 };
@@ -97,7 +97,7 @@ pub struct InventoryEntry {
 pub struct ModelLease {
     pub(crate) descriptor: ModelDescriptor,
     model: CatalogModel,
-    _lock: File,
+    _lock: FileLock,
 }
 
 impl ModelLease {
@@ -110,7 +110,7 @@ impl ModelLease {
 /// It does not create, download, replace, or publish model files.
 pub struct ModelMutationGuard {
     directory: PathBuf,
-    _lock: File,
+    _lock: FileLock,
 }
 
 impl ModelMutationGuard {
@@ -162,19 +162,14 @@ impl ModelStore {
         Ok(self.cache.root.checked(&Self::relative(pair)?)?)
     }
 
-    fn lock(&self, pair: LanguagePair, exclusive: bool) -> Result<File, StoreError> {
+    fn lock(&self, pair: LanguagePair, exclusive: bool) -> Result<FileLock, StoreError> {
         Self::relative(pair)?;
         let file = self
             .cache
             .root
             .lock_file(&format!("{}-{}.lock", pair.source, pair.target))?;
-        let result = if exclusive {
-            file.try_lock()
-        } else {
-            file.try_lock_shared()
-        };
-        match result {
-            Ok(()) => Ok(file),
+        match FileLock::try_lock(file, exclusive) {
+            Ok(lock) => Ok(lock),
             Err(TryLockError::WouldBlock) => Err(StoreError::Busy(pair)),
             Err(TryLockError::Error(error)) => Err(StoreError::Io(error)),
         }
@@ -404,7 +399,7 @@ impl ModelStore {
                 matches_current_catalog: None,
                 detail: None,
             };
-            let inspect = || -> Result<(File, CatalogModel), StoreError> {
+            let inspect = || -> Result<(FileLock, CatalogModel), StoreError> {
                 let lock = self.lock(pair, false)?;
                 Ok((lock, self.installed(pair)?))
             };

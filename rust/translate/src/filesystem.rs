@@ -1,5 +1,5 @@
 use std::{
-    fs::{self, File, OpenOptions},
+    fs::{self, File, OpenOptions, TryLockError},
     io,
     path::{Component, Path, PathBuf},
 };
@@ -17,6 +17,26 @@ pub(crate) fn is_link(metadata: &fs::Metadata) -> bool {
     #[cfg(not(windows))]
     {
         metadata.file_type().is_symlink()
+    }
+}
+
+pub(crate) struct FileLock(File);
+
+impl FileLock {
+    pub(crate) fn try_lock(file: File, exclusive: bool) -> Result<Self, TryLockError> {
+        if exclusive {
+            file.try_lock()?;
+        } else {
+            file.try_lock_shared()?;
+        }
+        Ok(Self(file))
+    }
+}
+
+impl Drop for FileLock {
+    fn drop(&mut self) {
+        // A duplicated or inherited handle may outlive this guard.
+        let _ = self.0.unlock();
     }
 }
 
@@ -133,4 +153,47 @@ pub(crate) fn check_tree(path: &Path) -> io::Result<()> {
         return Err(invalid("refusing a non-regular installation file"));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dropping_lock_owner_releases_lock_with_duplicate_handle_open() {
+        for exclusive in [false, true] {
+            let directory = tempfile::tempdir().unwrap();
+            let root = Root::open(directory.path()).unwrap();
+            let file = root.lock_file("retained.lock").unwrap();
+            let duplicate = file.try_clone().unwrap();
+            let lock = FileLock::try_lock(file, exclusive).unwrap();
+            let contender = root.lock_file("retained.lock").unwrap();
+            assert!(matches!(
+                contender.try_lock(),
+                Err(TryLockError::WouldBlock)
+            ));
+            drop(lock);
+            contender
+                .try_lock()
+                .expect("dropping the owner must release its lock while a duplicate remains open");
+            drop(duplicate);
+        }
+    }
+
+    #[test]
+    fn dropping_one_reader_preserves_other_readers_and_failed_writer_attempts() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = Root::open(directory.path()).unwrap();
+        let first = FileLock::try_lock(root.lock_file("readers.lock").unwrap(), false).unwrap();
+        let second = FileLock::try_lock(root.lock_file("readers.lock").unwrap(), false).unwrap();
+        drop(first);
+        for _ in 0..2 {
+            assert!(matches!(
+                FileLock::try_lock(root.lock_file("readers.lock").unwrap(), true),
+                Err(TryLockError::WouldBlock)
+            ));
+        }
+        drop(second);
+        FileLock::try_lock(root.lock_file("readers.lock").unwrap(), true).unwrap();
+    }
 }
