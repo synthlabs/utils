@@ -1,0 +1,41 @@
+name: Translation core
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'rust/translate/**'
+      - 'scripts/check-translate.mjs'
+      - '.github/workflows/translate.yml'
+  pull_request:
+    paths:
+      - 'rust/translate/**'
+      - 'scripts/check-translate.mjs'
+      - '.github/workflows/translate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [windows-latest, ubuntu-24.04, macos-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: 'rust/translate -> target'
+      - run: node scripts/check-translate.mjs
+      - name: Check verification lockfile
+        if: always()
+        run: git diff --exit-code -- rust/translate/Cargo.lock

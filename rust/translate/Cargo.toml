@@ -1,0 +1,21 @@
+[package]
+name = "synth-translate"
+version = "0.1.0"
+edition = "2021"
+description = "Reusable offline language detection and local text translation"
+publish = false
+
+# Keep verification independent of a consuming application's workspace.
+[workspace]
+resolver = "2"
+
+[dependencies]
+fxtranslate = { version = "=0.5.0", default-features = false, features = ["portable", "lean-embed", "mmap", "threads"] }
+sha2 = "0.10"
+thiserror = "2"
+whatlang = "=0.18.0"
+
+[dev-dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"

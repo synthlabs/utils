@@ -1,0 +1,47 @@
+{
+	"provenance": {
+		"model_version": "3.1",
+		"architecture": "base-memory",
+		"license": "MPL-2.0",
+		"license_source": "https://github.com/mozilla/translations/blob/main/README.md",
+		"runtime_source": "https://github.com/gregtatum/translations/tree/fxtranslate-v0.5.0/inference-rs/crates/fxtranslate",
+		"artifact_source": "https://firefox.settings.services.mozilla.com/v1/buckets/main-workspace/collections/translations-models-v2/records",
+		"hashes": "SHA-256 of decompressed files; frozen during the 2026-10-31 Windows evaluation"
+	},
+	"models": [
+		{
+			"id": "mozilla-v3.1-rus-eng",
+			"source": "rus",
+			"target": "eng",
+			"model": {
+				"path": "firefox-ru-en/model.ruen.intgemm.alphas.bin",
+				"sha256": "aa0efa194b3dbd2da129ba0b8db8ef139126cb0914e57072f62061294746f1e2"
+			},
+			"tokenizer": {
+				"path": "firefox-ru-en/vocab.ruen.spm",
+				"sha256": "de8af5f87e231ee4016cec4bb482e6b584cb1ca34dcb624fc7b8398f25bb35df"
+			},
+			"texts": [
+				"Сегодня хорошая погода, и мы идём гулять в парк.",
+				"Я читаю интересную книгу о путешествиях и природе."
+			]
+		},
+		{
+			"id": "mozilla-v3.1-eng-rus",
+			"source": "eng",
+			"target": "rus",
+			"model": {
+				"path": "firefox-en-ru/model.enru.intgemm.alphas.bin",
+				"sha256": "184cb5cda528eeefc0f75f5d0035d787b71d74af135e3c5608d01ae02ecfb920"
+			},
+			"tokenizer": {
+				"path": "firefox-en-ru/vocab.enru.spm",
+				"sha256": "56ee63e14e8cb926c394242adc3ed7cc602644c3d33058cff2ce2959d52a6258"
+			},
+			"texts": [
+				"The weather is beautiful today, and we are going for a walk in the park.",
+				"I am reading an interesting book about travel and nature."
+			]
+		}
+	]
+}
