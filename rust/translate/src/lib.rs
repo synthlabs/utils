@@ -14,6 +14,8 @@ mod installation;
 mod installer;
 mod store;
 mod types;
+#[cfg(feature = "workload")]
+mod workload;
 
 pub use catalog::*;
 pub use core::TranslationCore;
@@ -22,3 +24,5 @@ pub use installation::RecoveryReport;
 pub use installer::*;
 pub use store::*;
 pub use types::*;
+#[cfg(feature = "workload")]
+pub use workload::*;

@@ -56,6 +56,7 @@ for (const features of [
 	[],
 	['--features', 'catalog-http'],
 	['--features', 'model-downloads'],
+	['--features', 'workload'],
 	['--all-features']
 ]) {
 	commands.push(

@@ -95,6 +95,18 @@ impl TranslationCore {
         self.detector.detect(text)
     }
 
+    #[cfg(all(test, feature = "workload"))]
+    pub(crate) fn with_backends(
+        options: CoreOptions,
+        detector: Arc<dyn LanguageDetector>,
+        loader: Arc<dyn EngineLoader>,
+    ) -> Self {
+        let mut core = Self::new(options).unwrap();
+        core.detector = detector;
+        core.loader = loader;
+        core
+    }
+
     /// Relative paths are made absolute at registration. Lazy registration does
     /// not open files; paths are canonicalized before verification and loading.
     /// Eager failure leaves the model unregistered.
@@ -274,6 +286,17 @@ impl TranslationCore {
         &self,
         request: &TranslationRequest,
     ) -> Result<(LanguagePair, Option<Detection>), SkipReason> {
+        let (pair, detection) = self.resolve(request)?;
+        if !self.models.contains_key(&pair) {
+            return Err(SkipReason::ModelNotRegistered(pair));
+        }
+        Ok((pair, detection))
+    }
+
+    pub(crate) fn resolve(
+        &self,
+        request: &TranslationRequest,
+    ) -> Result<(LanguagePair, Option<Detection>), SkipReason> {
         if request.text.trim().is_empty() {
             return Err(SkipReason::BlankInput);
         }
@@ -297,9 +320,6 @@ impl TranslationCore {
             source,
             target: request.target,
         };
-        if !self.models.contains_key(&pair) {
-            return Err(SkipReason::ModelNotRegistered(pair));
-        }
         Ok((pair, detection))
     }
 }

@@ -13,6 +13,7 @@ resolver = "2"
 default = []
 catalog-http = ["dep:reqwest"]
 model-downloads = ["dep:reqwest", "dep:tokio", "dep:zstd"]
+workload = ["dep:tokio"]
 
 [dependencies]
 fxtranslate = { version = "=0.5.0", default-features = false, features = ["portable", "lean-embed", "mmap", "threads"] }

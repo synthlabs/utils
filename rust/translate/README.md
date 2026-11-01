@@ -119,9 +119,10 @@ receive individual errors and are never truncated by the wrapper. Larger caller
 batches are grouped by pair, processed sequentially in native chunks, and restored
 to input order. Tokenization requires the corresponding model to be loaded.
 
-Loading and inference block the calling thread. There is no queue, result cache,
-automatic eviction, or global concurrency budget. Callers select execution threads
-and own model lifetimes. Backend interfaces remain private.
+The direct core's loading and inference block the calling thread. It has no queue,
+result cache, automatic eviction, or global concurrency budget. Direct callers
+select execution threads and own model lifetimes. The optional workload manager
+below owns scheduling and managed-model lifetimes. Backend interfaces remain private.
 
 Two performance findings remain deferred with unmodified `fxtranslate 0.5.0`:
 source text is tokenized for the limit check and again for inference, and shared
@@ -129,6 +130,83 @@ source/target vocabularies are parsed and stored separately. Its encoded-batch
 API does not expose target detokenization; using that API here would require an
 extra target vocabulary. Sharing parsed vocabulary storage requires dependency
 changes. This wrapper adds neither an extra vocabulary copy nor a dependency patch.
+
+## Translation workload management
+
+Enable `workload` for `WorkloadManager`, independently of `catalog-http` and
+`model-downloads`. One dedicated worker owns the core and performs all language
+detection, file verification, loading, and inference. Construction needs no Tokio
+runtime and loads no models. Use the async API from the caller's Tokio runtime;
+the crate creates no runtime. Share the manager with `Arc` for concurrent callers.
+
+```rust,no_run
+# #[cfg(feature = "workload")]
+# async fn example() -> Result<(), Box<dyn std::error::Error>> {
+use synth_translate::{
+    CoreOptions, Language, ModelStore, TranslationRequest, WorkloadManager, WorkloadOptions,
+};
+
+let store = ModelStore::open("/application-data/translate")?;
+let manager = WorkloadManager::new(store, CoreOptions::default(), WorkloadOptions::default())?;
+let job = manager.submit(TranslationRequest::new("Привет, мир!", Language::ENGLISH)).await?;
+let outcome = job.result().await?;
+manager.shutdown().await?;
+# let _ = outcome;
+# Ok(())
+# }
+```
+
+`WorkloadOptions` defaults to `capacity: 256`, `cache_capacity: 1024`, and
+`overflow_policy: OverflowPolicy::RejectNew`. Both capacities must be positive
+and all options are fixed at construction. Capacity counts every accepted,
+unfinished caller, including callers sharing queued or active inference. Slots
+are freed at completion or cancellation, without waiting for result retrieval.
+These are entry-count limits, not a byte or process-memory ceiling. Futures
+waiting for admission retain their own inputs outside the accepted-work limit.
+
+- `RejectNew` returns `WorkloadError::Capacity` without altering accepted work.
+- `DropOldest` evicts the oldest queued caller with `WorkloadError::Evicted`,
+  retaining its shared work if other callers still need it. If every slot belongs
+  to active work, the new submission returns `Capacity`.
+- `Wait` suspends submission until capacity is available. Dropping the submission
+  future leaves no accepted request or reservation. FIFO starts at acceptance;
+  it does not promise ordering among submissions waiting for admission.
+
+Distinct work dispatches FIFO. Consecutive requests for the same model drain
+without a batching timer, up to `CoreOptions.native_batch_size` (default 16).
+Set it to one for individual execution. Only one native batch runs per manager,
+using the core's configured one-to-four native workers. Separate managers have
+independent budgets. Loading and preflight count as active work in snapshots.
+
+Identical queued or running requests share execution. Identity includes exact
+text, source mode, target, and detection policy. Successful results enter an
+in-memory LRU whose identity also checks the resident model revision. Text is not
+normalized; skips and errors are not cached. Cache hits complete immediately,
+including when outstanding capacity is full. FIFO is dispatch order, not result
+delivery order. Results and source text are never persisted by the manager.
+
+`job.cancel()` or dropping a job/result future cancels only that caller, returning
+`Cancelled` if it was unfinished. Removing the last queued caller removes the
+work. Native operations already active finish, and their successful output may
+still enter the cache. Canceling a completed job has no effect.
+
+Models are acquired and verified from the supplied store only when needed.
+`UnsupportedPair` and `ModelNotInstalled` are expected `SkipReason` values;
+corruption, access failures, and inference failures remain typed errors. No
+operation downloads models. Models and their leases stay resident until shutdown:
+stop the manager before replacing or removing one of its resident models.
+
+`snapshot()` returns queued/running caller counts, cached-result count, and
+resident model identities/directions. It has no event stream or cumulative metrics.
+Counts exclude submissions waiting for admission and completed results retained
+by callers. A canceled active operation can still finish with zero running callers.
+
+`shutdown().await` rejects new submissions, wakes blocked submitters, cancels
+queued callers, finishes active work, and releases engines, leases, and cache
+before returning. It is idempotent; dropping its future does not undo shutdown.
+Dropping the manager signals shutdown without waiting. Use explicit shutdown to
+await resource release. Unexpected worker failure resolves outstanding requests
+with `WorkerFailed`, closes admission, and releases worker-owned resources.
 
 ## Catalog metadata
 
@@ -361,7 +439,7 @@ The crate is its own Cargo workspace with a committed verification lockfile;
 verification does not change a consuming application's workspace or lockfile.
 The runner checks Rust formatting, Clippy, and model-free unit/integration tests
 and doctests in both debug and release profiles, with default features,
-`catalog-http`, `model-downloads`, and both features enabled.
+`catalog-http`, `model-downloads`, `workload`, and all features enabled.
 HTTP tests use deterministic local servers and never contact the public service.
 Required regressions use mocks
 and synthetic artifacts with matching hashes, covering token boundaries, malformed

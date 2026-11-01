@@ -107,14 +107,14 @@ pub struct ModelDescriptor {
     pub load_mode: LoadMode,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum SourceLanguage {
     #[default]
     Auto,
     Explicit(Language),
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum DetectionPolicy {
     #[default]
     ReliableOnly,
@@ -129,7 +129,7 @@ pub struct Detection {
     pub reliable: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct TranslationRequest {
     pub text: String,
     pub source: SourceLanguage,
@@ -165,6 +165,8 @@ pub enum SkipReason {
     UnreliableDetection(Detection),
     SameAsTarget(Language),
     ModelNotRegistered(LanguagePair),
+    UnsupportedPair(LanguagePair),
+    ModelNotInstalled(LanguagePair),
 }
 
 #[derive(Clone, Debug, PartialEq)]
