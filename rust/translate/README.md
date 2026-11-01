@@ -423,6 +423,25 @@ operation after resolving a recovery error. All mutations reject links/reparse
 points and paths outside the root. Unknown journals and unmanaged models are
 preserved. Local recovery remains available with both HTTP features disabled.
 
+## Optional Tauri integration
+
+Enable `tauri-plugin` for the app-owned `plugin::TranslationService`, Tauri plugin,
+and native `TranslationExt` accessor. The feature includes `workload`,
+`catalog-http`, and `model-downloads`; default builds remain Tauri-free. Rust and
+frontend callers share one service, queue, cache, and model store.
+
+The integration starts local initialization and one background metadata refresh,
+never automatic model downloads. Store failures expose unavailable status without
+failing application setup. Explicit workload release waits for engines and leases
+and leaves translation paused until explicit resume. App exit signals cancellation
+without waiting for cleanup. `WorkloadManager::request_shutdown()` provides the
+same synchronous shutdown signal used by its existing async shutdown and drop.
+
+Registration, permissions, client usage, installation observation, native access,
+and type-generation instructions are in
+[`js/translate/README.md`](../../js/translate/README.md). The reproducible Windows
+integration gate is `node scripts/check-translate-tauri.mjs` from utils.
+
 ## Verification
 
 From the utils repository:
@@ -439,7 +458,7 @@ The crate is its own Cargo workspace with a committed verification lockfile;
 verification does not change a consuming application's workspace or lockfile.
 The runner checks Rust formatting, Clippy, and model-free unit/integration tests
 and doctests in both debug and release profiles, with default features,
-`catalog-http`, `model-downloads`, `workload`, and all features enabled.
+`catalog-http`, `model-downloads`, `workload`, and their combined Tauri-free configuration.
 HTTP tests use deterministic local servers and never contact the public service.
 Required regressions use mocks
 and synthetic artifacts with matching hashes, covering token boundaries, malformed

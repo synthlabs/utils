@@ -1,0 +1,13 @@
+{
+	"name": "@synth/translate-verification",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"check": "tsc --project tsconfig.json",
+		"test": "node --test client.test.mjs"
+	},
+	"devDependencies": {
+		"@tauri-apps/api": "2.12.4",
+		"typescript": "6.0.3"
+	}
+}

@@ -272,13 +272,23 @@ struct Session {
 pub struct ModelInstaller {
     store: ModelStore,
     client: reqwest::Client,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "tauri-test"))]
     test_origin: Option<String>,
     #[cfg(test)]
     retry_unit: Duration,
 }
 
 impl ModelInstaller {
+    #[cfg(any(all(test, feature = "tauri-plugin"), feature = "tauri-test"))]
+    pub(crate) fn with_test_origin(mut self, origin: &str) -> Self {
+        self.client = reqwest::Client::builder()
+            .https_only(false)
+            .build()
+            .unwrap();
+        self.test_origin = Some(origin.into());
+        self
+    }
+
     /// Builds an HTTP client but performs no requests or background work.
     pub fn new(store: ModelStore) -> Result<Self, InstallError> {
         let client = reqwest::Client::builder()
@@ -296,7 +306,7 @@ impl ModelInstaller {
         Ok(Self {
             store,
             client,
-            #[cfg(test)]
+            #[cfg(any(test, feature = "tauri-test"))]
             test_origin: None,
             #[cfg(test)]
             retry_unit: Duration::from_secs(1),
@@ -541,14 +551,14 @@ impl ModelInstaller {
         session: Arc<Session>,
         file: CatalogArtifact,
     ) -> Result<(), InstallError> {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "tauri-test"))]
         let rewritten = self
             .test_origin
             .as_ref()
             .map(|origin| file.url.replacen("https://models.jerod.me", origin, 1));
-        #[cfg(test)]
+        #[cfg(any(test, feature = "tauri-test"))]
         let url = rewritten.as_deref().unwrap_or(&file.url);
-        #[cfg(not(test))]
+        #[cfg(not(any(test, feature = "tauri-test")))]
         let url = &file.url;
         let request = self
             .client
@@ -837,4 +847,4 @@ fn decompress(session: &Session, file: &CatalogArtifact) -> Result<(), InstallEr
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

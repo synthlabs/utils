@@ -1,0 +1,8 @@
+{
+	"productName": "Translation Test Consumer",
+	"version": "0.1.0",
+	"identifier": "sh.synth.translate-test",
+	"build": { "frontendDist": "assets" },
+	"app": { "windows": [], "security": { "capabilities": ["main"] } },
+	"bundle": { "active": false, "icon": [] }
+}

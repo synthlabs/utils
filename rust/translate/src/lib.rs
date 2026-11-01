@@ -12,6 +12,8 @@ mod filesystem;
 mod installation;
 #[cfg(feature = "model-downloads")]
 mod installer;
+#[cfg(feature = "tauri-plugin")]
+pub mod plugin;
 mod store;
 mod types;
 #[cfg(feature = "workload")]

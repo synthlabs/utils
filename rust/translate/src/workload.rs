@@ -94,7 +94,7 @@ impl WorkloadManager {
         Self::start(store, core, options, core_options.native_batch_size)
     }
 
-    fn start(
+    pub(crate) fn start(
         store: ModelStore,
         core: TranslationCore,
         options: WorkloadOptions,
@@ -193,10 +193,15 @@ impl WorkloadManager {
         }
     }
 
+    /// Close admission and signal shutdown without waiting for active native work.
+    pub fn request_shutdown(&self) {
+        self.shared.close();
+    }
+
     /// Idempotently close admission and await release of worker-owned resources.
     /// Cancelling this future does not reverse shutdown.
     pub async fn shutdown(&self) -> Result<(), WorkloadError> {
-        self.shared.close();
+        self.request_shutdown();
         let mut stopped = self.shared.stopped.subscribe();
         loop {
             if let Some(result) = stopped.borrow().clone() {
@@ -212,7 +217,7 @@ impl WorkloadManager {
 
 impl Drop for WorkloadManager {
     fn drop(&mut self) {
-        self.shared.close();
+        self.request_shutdown();
     }
 }
 

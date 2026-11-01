@@ -31,11 +31,27 @@ pub struct CatalogLoad {
 pub struct CatalogClient {
     cache: CatalogCache,
     client: reqwest::Client,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "tauri-test"))]
     test_origin: Option<String>,
 }
 
 impl CatalogClient {
+    #[cfg(any(all(test, feature = "tauri-plugin"), feature = "tauri-test"))]
+    pub(crate) fn with_test_origin(mut self, origin: &str) -> Self {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::ACCEPT_ENCODING,
+            reqwest::header::HeaderValue::from_static("identity"),
+        );
+        self.client = reqwest::Client::builder()
+            .https_only(false)
+            .default_headers(headers)
+            .build()
+            .unwrap();
+        self.test_origin = Some(origin.into());
+        self
+    }
+
     pub fn open(store_root: impl AsRef<Path>) -> Result<Self, CatalogError> {
         let client = reqwest::Client::builder()
             .https_only(true)
@@ -46,7 +62,7 @@ impl CatalogClient {
         Ok(Self {
             cache: CatalogCache::open(store_root)?,
             client,
-            #[cfg(test)]
+            #[cfg(any(test, feature = "tauri-test"))]
             test_origin: None,
         })
     }
@@ -96,12 +112,12 @@ impl CatalogClient {
     }
 
     async fn fetch(&self, url: &str, limit: usize) -> Result<Vec<u8>, CatalogError> {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "tauri-test"))]
         let rewritten = self
             .test_origin
             .as_ref()
             .map(|origin| url.replacen(ORIGIN, origin, 1));
-        #[cfg(test)]
+        #[cfg(any(test, feature = "tauri-test"))]
         let url = rewritten.as_deref().unwrap_or(url);
         let mut response = self
             .client

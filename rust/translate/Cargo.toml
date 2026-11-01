@@ -14,18 +14,28 @@ default = []
 catalog-http = ["dep:reqwest"]
 model-downloads = ["dep:reqwest", "dep:tokio", "dep:zstd"]
 workload = ["dep:tokio"]
+tauri-plugin = ["catalog-http", "model-downloads", "workload", "dep:tauri", "dep:specta", "dep:translate-build"]
+tauri-test = ["tauri-plugin", "tauri/test"]
 
 [dependencies]
 fxtranslate = { version = "=0.5.0", default-features = false, features = ["portable", "lean-embed", "mmap", "threads"] }
 reqwest = { version = "0.12.28", optional = true, default-features = false, features = ["rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+specta = { version = "=2.0.0-rc.22", optional = true, features = ["derive"] }
 sha2 = "0.10"
 tempfile = "3"
+tauri = { version = "2.12.5", optional = true, default-features = false }
+translate-build = { path = "../translate-build", optional = true }
 thiserror = "2"
 tokio = { version = "1", optional = true, features = ["rt", "sync", "time", "macros"] }
 whatlang = "=0.18.0"
 zstd = { version = "0.13.3", optional = true, default-features = false }
 
 [dev-dependencies]
+specta-typescript = "=0.0.9"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[[example]]
+name = "export_translate_types"
+required-features = ["tauri-plugin"]

@@ -31,3 +31,22 @@ jobs:
       - name: Check verification lockfile
         if: always()
         run: git diff --exit-code -- rust/translate/Cargo.lock
+
+  tauri-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: 'rust/translate -> target'
+      - run: npm ci --ignore-scripts --prefix js/translate
+      - run: node scripts/check-translate-tauri.mjs
+      - name: Check generated contract and verification lockfiles
+        if: always()
+        run: git diff --exit-code -- rust/translate/Cargo.lock rust/translate/tests/consumer/Cargo.lock js/translate/types.ts js/translate/package-lock.json

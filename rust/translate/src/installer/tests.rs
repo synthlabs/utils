@@ -22,15 +22,15 @@ use crate::{
 };
 
 #[derive(Clone)]
-enum Reply {
+pub(crate) enum Reply {
     Body(u16, Vec<u8>),
     Chunked(Vec<u8>),
     Length(Vec<u8>, u64),
     Stalled(Vec<u8>),
 }
 
-struct Server {
-    origin: String,
+pub(crate) struct Server {
+    pub(crate) origin: String,
     routes: Arc<Mutex<HashMap<String, VecDeque<Reply>>>>,
     requests: Arc<Mutex<Vec<String>>>,
     stop: Arc<AtomicBool>,
@@ -38,7 +38,7 @@ struct Server {
 }
 
 impl Server {
-    fn new(objects: &HashMap<String, Vec<u8>>) -> Self {
+    pub(crate) fn new(objects: &HashMap<String, Vec<u8>>) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let origin = format!("http://{}", listener.local_addr().unwrap());
         listener.set_nonblocking(true).unwrap();
@@ -133,13 +133,13 @@ impl Server {
             thread: Some(worker),
         }
     }
-    fn replies(&self, path: &str, replies: Vec<Reply>) {
+    pub(crate) fn replies(&self, path: &str, replies: Vec<Reply>) {
         self.routes
             .lock()
             .unwrap()
             .insert(path.into(), replies.into());
     }
-    fn count(&self, path: &str) -> usize {
+    pub(crate) fn count(&self, path: &str) -> usize {
         self.requests
             .lock()
             .unwrap()
@@ -147,7 +147,7 @@ impl Server {
             .filter(|p| p.as_str() == path)
             .count()
     }
-    fn total(&self) -> usize {
+    pub(crate) fn total(&self) -> usize {
         self.requests.lock().unwrap().len()
     }
 }

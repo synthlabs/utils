@@ -51,13 +51,32 @@ for (let index = 0; index < args.length; index++) {
 	}
 }
 
+for (const features of [[], ['--features', 'catalog-http,model-downloads,workload']]) {
+	const tree = spawnSync(
+		'cargo',
+		['tree', '--locked', '--edges', 'normal', '--prefix', 'none', ...features],
+		{
+			cwd: crateRoot,
+			encoding: 'utf8'
+		}
+	);
+	if (tree.error || tree.status !== 0) {
+		console.error(tree.error?.message ?? tree.stderr);
+		process.exit(tree.status ?? 1);
+	}
+	if (/^tauri(?:-[\w-]+)? v/m.test(tree.stdout)) {
+		console.error('Unexpected Tauri dependency in the core-only feature configuration');
+		process.exit(1);
+	}
+}
+
 const commands = [['fmt', '--all', '--', '--check']];
 for (const features of [
 	[],
 	['--features', 'catalog-http'],
 	['--features', 'model-downloads'],
 	['--features', 'workload'],
-	['--all-features']
+	['--features', 'catalog-http,model-downloads,workload']
 ]) {
 	commands.push(
 		['clippy', '--locked', '--all-targets', ...features, '--', '-D', 'warnings'],
@@ -94,7 +113,8 @@ if (liveCatalog) {
 		'test',
 		'--locked',
 		'--release',
-		'--all-features',
+		'--features',
+		'catalog-http,model-downloads,workload',
 		'--test',
 		'catalog_http',
 		'--',
@@ -107,7 +127,8 @@ if (downloadModel) {
 		'test',
 		'--locked',
 		'--release',
-		'--all-features',
+		'--features',
+		'catalog-http,model-downloads,workload',
 		'--test',
 		'download_models',
 		'--',
