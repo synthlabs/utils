@@ -286,6 +286,17 @@ test('requested snapshots must belong to utils/main, including snapshots superse
   assert.throws(() => resolveTarget(fake.api, 'bad'), /Invalid target SHA/);
 });
 
+test('propagation stays pinned to the verified snapshot when utils/main advances', () => {
+  const repositories = readRegistry();
+  const fake = fakeGitHub({ repositories, sourceHead: NEWER });
+  const summary = run(fake, { targetSha: TARGET });
+  assert.equal(summary.targetSha, TARGET);
+  assert.equal(summary.results.length, repositories.length);
+  assert.ok(summary.results.every(result => result.status === 'updated' && result.newSha === TARGET));
+  assert.equal(fake.successfulPatches, repositories.length);
+  assert.ok([...fake.states.values()].every(state => state.pin === TARGET));
+});
+
 test('stale invocations resolve the current main tip and can converge all registered consumers', () => {
   const repositories = readRegistry();
   const fake = fakeGitHub({ repositories, sourceHead: NEWER });

@@ -51,8 +51,9 @@ the workflow to utils/main:
    ```
 
 The App token is scoped to registry consumers. The workflow's `GITHUB_TOKEN` has only
-Contents read permission and handles source-repository reads. Pull requests run the
-updater tests without creating an App token. Official Actions are pinned to commit SHAs.
+Contents read permission and handles source-repository reads. Pull requests run
+verification and the updater tests without creating an App token. The reusable
+verification workflow receives no App secrets. Official Actions are pinned to commit SHAs.
 
 ## Validate and operate
 
@@ -72,12 +73,23 @@ This mode makes only GET requests; it creates no tree, commit, or reference upda
 Local invocations default to dry run. Live writes require `--write`, the App token in
 `GH_TOKEN`, and the App slug in `UTILS_UPDATER_APP_SLUG`.
 
-After activation, every push to utils/main propagates a shared snapshot of the latest
-main tip. Writing runs are serialized without canceling an active run. Superseded
-pending runs can coalesce. Dry runs use separate concurrency so they cannot replace
-a pending writing run.
+Every push to utils/main, pull request targeting main, and manual updater dispatch
+runs the full Windows, Ubuntu, and macOS verification matrix, including changes
+outside translation files. The update job depends on successful verification on all
+three platforms; failed, skipped, or cancelled verification blocks propagation.
+The updater tests must also pass before an App token is created.
 
-Manual dispatch defaults to dry run:
+Successful main runs propagate the exact commit verified by that run. Verification
+and updater checkouts are pinned to the run's commit SHA; the updater passes that
+SHA through `--target-sha`. If main advances during verification, that newer commit
+is not substituted for the verified snapshot.
+
+Writing runs, including verification, are serialized without canceling an active
+run. Superseded pending runs can coalesce. Dry runs use separate concurrency so they
+cannot replace a pending writing run. The translation workflow also remains
+available for standalone manual verification without propagation.
+
+Manual dispatch defaults to dry run and runs verification before inspecting consumers:
 
 ```sh
 gh workflow run update-utils.yml --repo synthlabs/utils --ref main -f dry_run=true
