@@ -1,0 +1,85 @@
+{
+	"schema_version": 1,
+	"source_snapshot_url": "https://models.jerod.me/snapshots/b74b4bd34230ecd2309a4b249ed44cc826e5f6b767ab4b54fbe54e4c7d8ebb0f/catalog.json",
+	"source": {
+		"license_sha256": "3f3d9e0024b1921b067d6f7f88deb4a60cbe7a78e76c64e3f1d7fc3b779b9d04",
+		"license_url": "https://www.mozilla.org/media/MPL/2.0/index.txt",
+		"records_sha256": "e0211fb3fe9daa310ea5cc8d9f326a19ff68c46d618ba67a197c1979df6fd971",
+		"records_url": "https://firefox.settings.services.mozilla.com/v1/buckets/main/collections/translations-models-v2/records",
+		"retrieved_at": "2026-11-01T00:34:36.983564+00:00"
+	},
+	"models": [
+		{
+			"architecture": "base",
+			"files": [
+				{
+					"decompressed_sha256": "3587f93c10c1d457f874c2ba7ff4d5e2686fdaf7f3fd179cfefeacab3c6990b9",
+					"decompressed_size": 2768468,
+					"filename": "lex.50.50.enru.s2t.bin",
+					"role": "lex",
+					"sha256": "d5a33e067e7a7b2a1168f70d403424c4e68c539c333837bde05b150f83c39e8b",
+					"size": 990112,
+					"url": "https://models.jerod.me/objects/sha256/d5a33e067e7a7b2a1168f70d403424c4e68c539c333837bde05b150f83c39e8b.zst"
+				},
+				{
+					"decompressed_sha256": "0ef9a209c5edc46692750e7505b3695655b1c7c3ec73058b641201ef18c481ce",
+					"decompressed_size": 42992955,
+					"filename": "model.enru.intgemm.alphas.bin",
+					"role": "model",
+					"sha256": "8a9ee496752361b7d7dd449dab046929880d21ab3ebcd2a261f076441d52dc30",
+					"size": 29744901,
+					"url": "https://models.jerod.me/objects/sha256/8a9ee496752361b7d7dd449dab046929880d21ab3ebcd2a261f076441d52dc30.zst"
+				},
+				{
+					"decompressed_sha256": "56ee63e14e8cb926c394242adc3ed7cc602644c3d33058cff2ce2959d52a6258",
+					"decompressed_size": 904455,
+					"filename": "vocab.enru.spm",
+					"role": "vocab",
+					"sha256": "088a38d8b5faf6315b284e3088714f70a8c79438496b15826b6c62496503c447",
+					"size": 345737,
+					"url": "https://models.jerod.me/objects/sha256/088a38d8b5faf6315b284e3088714f70a8c79438496b15826b6c62496503c447.zst"
+				}
+			],
+			"filter_expression": "env.appinfo.OS != 'Android'",
+			"source": "en",
+			"target": "ru",
+			"version": "3.0"
+		},
+		{
+			"architecture": "base-memory",
+			"files": [
+				{
+					"decompressed_sha256": "c944e753f298bbdf6506388de7257fb48cbd12c83e2807e2c284fc323771895b",
+					"decompressed_size": 4397908,
+					"filename": "lex.50.50.ruen.s2t.bin",
+					"role": "lex",
+					"sha256": "e22557093855eb6e81170ffd91512fa49eac4bd17ffb1159eedc4339c6638aca",
+					"size": 1553356,
+					"url": "https://models.jerod.me/objects/sha256/e22557093855eb6e81170ffd91512fa49eac4bd17ffb1159eedc4339c6638aca.zst"
+				},
+				{
+					"decompressed_sha256": "aa0efa194b3dbd2da129ba0b8db8ef139126cb0914e57072f62061294746f1e2",
+					"decompressed_size": 31561787,
+					"filename": "model.ruen.intgemm.alphas.bin",
+					"role": "model",
+					"sha256": "7ea801682242498cb1ab3fcd7c17ed78d27849608cb9277781d27fe963b0c8bc",
+					"size": 22222762,
+					"url": "https://models.jerod.me/objects/sha256/7ea801682242498cb1ab3fcd7c17ed78d27849608cb9277781d27fe963b0c8bc.zst"
+				},
+				{
+					"decompressed_sha256": "de8af5f87e231ee4016cec4bb482e6b584cb1ca34dcb624fc7b8398f25bb35df",
+					"decompressed_size": 952371,
+					"filename": "vocab.ruen.spm",
+					"role": "vocab",
+					"sha256": "db7d5931908ba7597ec12fcbab9109c5e254c582b1fe515e7d76ab2cd36388c6",
+					"size": 366313,
+					"url": "https://models.jerod.me/objects/sha256/db7d5931908ba7597ec12fcbab9109c5e254c582b1fe515e7d76ab2cd36388c6.zst"
+				}
+			],
+			"filter_expression": "",
+			"source": "ru",
+			"target": "en",
+			"version": "3.1"
+		}
+	]
+}

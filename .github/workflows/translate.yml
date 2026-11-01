@@ -1,4 +1,4 @@
-name: Translation core
+name: Translation core and model store
 
 on:
   push:

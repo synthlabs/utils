@@ -17,6 +17,8 @@ use crate::{
 struct RegisteredModel {
     descriptor: ModelDescriptor,
     engine: Mutex<Option<Arc<dyn InferenceEngine>>>,
+    // Fields drop in declaration order: the mapped engine must release first.
+    _lease: Option<crate::ModelLease>,
 }
 
 impl RegisteredModel {
@@ -96,9 +98,25 @@ impl TranslationCore {
     /// Relative paths are made absolute at registration. Lazy registration does
     /// not open files; paths are canonicalized before verification and loading.
     /// Eager failure leaves the model unregistered.
-    pub fn register_model(
+    pub fn register_model(&mut self, descriptor: ModelDescriptor) -> Result<(), TranslationError> {
+        self.register_with_lease(descriptor, None)
+    }
+
+    /// Retains the store's shared file-use guard until unregister or core drop.
+    pub fn register_stored_model(
+        &mut self,
+        lease: crate::ModelLease,
+        load_mode: LoadMode,
+    ) -> Result<(), TranslationError> {
+        let mut descriptor = lease.descriptor.clone();
+        descriptor.load_mode = load_mode;
+        self.register_with_lease(descriptor, Some(lease))
+    }
+
+    fn register_with_lease(
         &mut self,
         mut descriptor: ModelDescriptor,
+        lease: Option<crate::ModelLease>,
     ) -> Result<(), TranslationError> {
         if descriptor.id.trim().is_empty() || descriptor.pair.source == descriptor.pair.target {
             return Err(TranslationError::InvalidModel(
@@ -137,6 +155,7 @@ impl TranslationCore {
         let registered = RegisteredModel {
             descriptor,
             engine: Mutex::new(None),
+            _lease: lease,
         };
         if eager {
             registered.engine(self.loader.as_ref(), self.options)?;

@@ -29,6 +29,7 @@ struct Control {
     panic_next_load: AtomicBool,
     descriptors: Mutex<Vec<ModelDescriptor>>,
     batches: Mutex<Vec<(String, Vec<String>)>>,
+    check_drop_guard: Mutex<Option<crate::ModelStore>>,
 }
 
 struct MockLoader(Arc<Control>);
@@ -55,6 +56,12 @@ impl EngineLoader for MockLoader {
 
 impl Drop for MockEngine {
     fn drop(&mut self) {
+        if let Some(store) = self.1.check_drop_guard.lock().unwrap().as_ref() {
+            assert!(matches!(
+                store.exclusive(RU_EN),
+                Err(crate::StoreError::Busy(_))
+            ));
+        }
         self.1.drops.fetch_add(1, Ordering::SeqCst);
     }
 }
@@ -146,6 +153,38 @@ fn mock_core(options: CoreOptions) -> (TranslationCore, Arc<Control>) {
     core.loader = Arc::new(MockLoader(control.clone()));
     core.detector = Arc::new(MockDetector);
     (core, control)
+}
+
+#[test]
+fn stored_registration_keeps_lease_until_after_engine_drop_and_releases_on_failure() {
+    use crate::{
+        catalog::tests::{snapshot, wire},
+        store::tests::install,
+        ModelStore, StoreError,
+    };
+    let directory = tempfile::tempdir().unwrap();
+    let store = ModelStore::open(directory.path()).unwrap();
+    let catalog = snapshot(&wire());
+    install(&store, &catalog, RU_EN);
+    for mode in [LoadMode::Lazy, LoadMode::Eager] {
+        let (mut core, control) = mock_core(CoreOptions::default());
+        *control.check_drop_guard.lock().unwrap() = Some(store.clone());
+        let id = catalog.model(RU_EN).unwrap().id();
+        core.register_stored_model(store.acquire(RU_EN).unwrap(), mode)
+            .unwrap();
+        assert!(matches!(store.remove(RU_EN), Err(StoreError::Busy(_))));
+        translated(core.translate(&request("text", RU_EN)));
+        assert_eq!(control.loads.load(Ordering::SeqCst), 1);
+        assert!(core.unregister_model(id));
+        assert_eq!(control.drops.load(Ordering::SeqCst), 1);
+        assert!(store.exclusive(RU_EN).is_ok());
+        control.fail_next_load.store(true, Ordering::SeqCst);
+        assert!(core
+            .register_stored_model(store.acquire(RU_EN).unwrap(), LoadMode::Eager)
+            .is_err());
+        assert!(store.exclusive(RU_EN).is_ok());
+        assert!(!core.unregister_model(id));
+    }
 }
 
 fn request(text: &str, pair: LanguagePair) -> TranslationRequest {
