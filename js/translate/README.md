@@ -165,6 +165,124 @@ and error for an explicit retry. Dropping a caller waiting for the refresh lock
 leaves the active refresh unchanged. Shutdown clears refresh status and remains
 terminal.
 
+## Shared model-management UI
+
+The framework-neutral `ModelManagerController` is exported from `$utils/translate`.
+The Svelte 5 `ModelManagerPanel` and its presentation types are exported separately
+from `$utils/translate/ui`. Importing the client/controller does not import Svelte.
+The host owns the client, controller, confirmation UI, and lifecycle:
+
+```ts
+import { createTranslationClient, ModelManagerController } from '$utils/translate';
+
+const client = createTranslationClient();
+const models = new ModelManagerController({
+	client,
+	confirm: (request) => confirmationUi.open(request),
+	onerror: (error, context) => errorUi.show(error, context)
+});
+await models.connect();
+const unsubscribe = models.subscribe(renderModelState);
+
+// At the end of the owning lifecycle, after views have unmounted:
+unsubscribe();
+await models.dispose();
+await client.dispose();
+```
+
+`confirmationUi`, `errorUi`, and `renderModelState` above belong to the host.
+`connect()` is idempotent. Connection failures reject and are also reported inline
+and through `onerror`; an explicit subsequent `connect()` retries. Opening the UI
+does not refresh metadata or download/verify model files. The existing plugin's
+startup metadata refresh remains in effect.
+
+```svelte
+<script lang="ts">
+	import { ModelManagerPanel } from '$utils/translate/ui';
+	import type { ModelManagerController } from '$utils/translate';
+	let { models }: { models: ModelManagerController } = $props();
+</script>
+
+<ModelManagerPanel controller={models} />
+```
+
+The panel only subscribes to the controller. Unmounting it leaves the controller,
+client, and application-owned installation alone. Multiple panels can share a
+controller. The host must keep its client alive until controller disposal resolves.
+Disposal rejects new actions and invalidates unanswered confirmations, but awaits
+accepted release/change/resume workflows and cancellation requests before
+detaching. An ordinary installation continues in the backend after disposal.
+
+### Confirmation contract
+
+The required `confirm(request)` returns `Promise<boolean>` and must obtain an
+explicit user decision; only `true` approves. No built-in dialog or browser confirm
+is used. Requests are typed as `ModelConfirmationRequest`:
+
+- `action` is `install`, `repair`, `replace`, `remove`, or `clear_downloads`.
+- `pair` and `installed` identify the language direction and known local model.
+- Download actions additionally carry the exact pinned `plan`, including model
+  identity/version, catalog digest, download bytes, and installed bytes. Present
+  these details before authorizing a download; byte values are decimal strings.
+- `interruptsTranslation` means this action will release the workload. Explain
+  that queued translations are cancelled and active work is awaited. A replacement
+  keeps translation paused through its terminal installation result.
+
+The controller passes a detached copy to the confirmation UI. Changes to that
+copy do not change the actual installation plan. A catalog refresh does not replace
+the reviewed plan. Changed local data, a newly loaded model, or a backend Busy
+response requires the user to retry and review the action again; nothing is
+automatically replayed. A rejected/failed confirmation performs no mutation.
+
+### State and actions
+
+`snapshot()` and `subscribe()` expose Installed, Available, and Needs attention
+rows, service/catalog state, the active/latest installation, pending action/stage,
+inline errors, and the latest action notice. Snapshots detach model/store DTOs;
+`subscribe` immediately delivers current state and returns an unsubscribe function.
+Unmanaged rows are read-only. Inventory's `present_unverified` remains unverified
+even after an explicit point-in-time verification result.
+
+Actions are `install(pair, 'install' | 'repair' | 'replace')`, `remove(pair)`,
+`clearDownloads(pair)`, `verify(pair)`, `refreshModels()`, `refreshCatalog()`,
+`retryInitialize()`, `resume()`, `cancelInstallation()`, and `dismissError(id)`.
+Boolean-returning actions resolve false when blocked, declined, invalidated, or
+failed; successful installation submission is acknowledgment, not completion.
+Operation outcomes and restoration/refresh failures remain in the snapshot.
+Action failures are handled inline and passed to optional `onerror(error, context)`
+once. The library does not log them or emit toasts; a host can connect its existing
+Inbound error presentation there. Catalog startup failures remain visible in
+catalog state even when the local service is ready.
+
+Loaded-model removal/replacement restores a previously running workload, including
+after a failed mutation; an already-paused workload remains paused. Mutation and
+resume failures are retained separately. A full window reload cannot finish that
+frontend-owned restoration: a new controller shows paused state with explicit
+Resume, disabled until an active installation finishes. Application exit retains
+the backend's existing signal-and-exit behavior.
+
+Cancel waits for the backend's terminal outcome before claiming cancellation and
+never clears downloaded files. Clear downloads is a separate confirmed action
+without retained-size accounting. It reports whether files were removed and does
+not release a loaded model; Busy remains visible. Verification is explicit.
+Progress defaults to phase, current-phase bar, and Cancel, with closed expandable
+file/byte/retry/reuse/network details. Verification/publication are indeterminate;
+`finished`/`result`/`error`, rather than phase alone, determine completion.
+
+### Presentation overrides
+
+The panel accepts `copy: Partial<ModelManagerCopy>`, `class`, and typed Svelte
+snippets: `header(snapshot)`, `modelRow(row, controls)`, `action(control)`, and
+`progress(installation, cancelControl)`. Controls expose `kind`, `label`, `disabled`,
+optional `title`, and `onclick`. Custom controls must preserve disabled state,
+accessible names, keyboard behavior, and the provided action callback. A custom
+progress view must preserve terminal-outcome handling. Copy includes language,
+pair, byte, phase, and notice formatters, including expanded diagnostics.
+
+Default styling uses semantic Tailwind theme classes without Pepo imports. Hosts
+must supply their theme and include this UI directory in Tailwind's sources. A
+fully custom UI can subscribe directly to the framework-neutral controller.
+
 ## Native Rust access and exit
 
 Import `synth_translate::plugin::TranslationExt` and call `app.translation()` to
@@ -191,6 +309,7 @@ Normal app builds and verification do not rewrite it. Windows plugin checks:
 ```text
 npm ci --ignore-scripts --prefix js/translate
 node scripts/check-translate-tauri.mjs
+node scripts/check-translate-ui.mjs
 ```
 
 `--quick` runs plugin unit tests, generated-contract drift, client regressions, and
@@ -201,6 +320,13 @@ verification package's `node_modules/.cache`, alongside its test dependencies.
 All routine fixtures are synthetic, use loopback HTTP, and require
 no model downloads. `tauri-test` is a verification feature for mock-runtime and
 loopback fixtures; consuming applications enable `tauri-plugin`.
+
+The independent UI runner checks the existing client regressions, framework-neutral
+TypeScript, Svelte types/accessibility diagnostics, controller regressions, and
+mounted panel/custom-presentation tests. Its private Svelte config does not depend
+on a consuming app. UI tests use `.test.mts` to keep them within this standalone
+runner instead of a consuming app's potentially different Vitest version. The
+private verification package uses Vitest 4.1 with its Vite 8 Svelte plugin.
 
 The independent `node scripts/check-translate.mjs` matrix continues to verify all
 Tauri-free feature combinations on Windows, Linux, and macOS. Packaged application

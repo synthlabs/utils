@@ -47,6 +47,7 @@ jobs:
           workspaces: 'rust/translate -> target'
       - run: npm ci --ignore-scripts --prefix js/translate
       - run: node scripts/check-translate-tauri.mjs
+      - run: node scripts/check-translate-ui.mjs
       - name: Check generated contract and verification lockfiles
         if: always()
         run: git diff --exit-code -- rust/translate/Cargo.lock rust/translate/tests/consumer/Cargo.lock js/translate/types.ts js/translate/package-lock.json
