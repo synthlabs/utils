@@ -476,6 +476,130 @@ async fn hosted_service(root: &std::path::Path, server: &Server) -> Arc<Translat
     service
 }
 
+async fn stalled_catalog_refresh(
+    service: &Arc<TranslationService>,
+    catalog: &CatalogSnapshot,
+    server: &Server,
+) -> tokio::task::JoinHandle<Result<CatalogStateDto, ServiceError>> {
+    server.replies(
+        "/latest.json",
+        vec![Reply::Stalled(
+            serde_json::to_vec(&catalog.pointer()).unwrap(),
+        )],
+    );
+    let requests = server.count("/latest.json");
+    let service = service.clone();
+    let refresh = tokio::spawn(async move { service.refresh_catalog().await });
+    bounded(async {
+        while server.count("/latest.json") == requests {
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await;
+    refresh
+}
+
+#[tokio::test]
+async fn cancelled_catalog_refresh_clears_status_preserves_metadata_and_allows_retry() {
+    let (directory, catalog, server) = hosted_fixture();
+    let service = hosted_service(directory.path(), &server).await;
+    server.replies("/latest.json", vec![Reply::Body(503, Vec::new())]);
+    let cached = service.refresh_catalog().await.unwrap();
+    assert!(cached.error.is_some());
+    assert!(matches!(cached.freshness, Some(FreshnessDto::Cached)));
+    let before = service.snapshot();
+    let changes = service.subscribe();
+    let refresh = stalled_catalog_refresh(&service, &catalog, &server).await;
+    assert!(service.snapshot().catalog.refreshing);
+    refresh.abort();
+    assert!(bounded(refresh).await.unwrap_err().is_cancelled());
+    let after = service.snapshot();
+    assert!(!after.catalog.refreshing);
+    assert_eq!(after.phase, ServicePhase::Ready);
+    assert_eq!(after.models_revision, before.models_revision);
+    assert!(after.revision.parse::<u64>().unwrap() > before.revision.parse::<u64>().unwrap());
+    assert_eq!(
+        serde_json::to_value(&after.catalog).unwrap(),
+        serde_json::to_value(&before.catalog).unwrap()
+    );
+    assert_eq!(
+        serde_json::to_value(&*changes.borrow()).unwrap(),
+        serde_json::to_value(&after).unwrap()
+    );
+    server.replies(
+        "/latest.json",
+        vec![Reply::Body(
+            200,
+            serde_json::to_vec(&catalog.pointer()).unwrap(),
+        )],
+    );
+    let retried = bounded(service.refresh_catalog()).await.unwrap();
+    assert!(!retried.refreshing);
+    assert!(retried.error.is_none());
+    assert!(matches!(retried.freshness, Some(FreshnessDto::Fresh)));
+    assert_eq!(
+        retried.catalog.unwrap().sha256,
+        catalog.sha256().to_string()
+    );
+    service.request_shutdown();
+}
+
+#[tokio::test]
+async fn cancelled_queued_catalog_refresh_leaves_the_active_refresh_unchanged() {
+    let (directory, catalog, server) = hosted_fixture();
+    let service = hosted_service(directory.path(), &server).await;
+    let active = stalled_catalog_refresh(&service, &catalog, &server).await;
+    let before = service.snapshot();
+    let requests = server.total();
+    {
+        let waiting = service.refresh_catalog();
+        tokio::pin!(waiting);
+        std::future::poll_fn(|context| {
+            assert!(waiting.as_mut().poll(context).is_pending());
+            std::task::Poll::Ready(())
+        })
+        .await;
+    }
+    assert_eq!(
+        serde_json::to_value(service.snapshot()).unwrap(),
+        serde_json::to_value(before).unwrap()
+    );
+    assert_eq!(server.total(), requests);
+    assert!(!active.is_finished());
+    service.request_shutdown();
+    assert_eq!(
+        bounded(active).await.unwrap().unwrap_err().code,
+        ErrorCode::Shutdown
+    );
+}
+
+#[tokio::test]
+async fn shutdown_during_catalog_refresh_stays_terminal_and_preserves_metadata() {
+    let (directory, catalog, server) = hosted_fixture();
+    let service = hosted_service(directory.path(), &server).await;
+    let before = service.snapshot();
+    let refresh = stalled_catalog_refresh(&service, &catalog, &server).await;
+    service.request_shutdown();
+    assert_eq!(
+        bounded(refresh).await.unwrap().unwrap_err().code,
+        ErrorCode::Shutdown
+    );
+    let after = service.snapshot();
+    assert_eq!(after.phase, ServicePhase::Shutdown);
+    assert!(!after.catalog.refreshing);
+    assert_eq!(after.models_revision, before.models_revision);
+    assert_eq!(
+        serde_json::to_value(after.catalog).unwrap(),
+        serde_json::to_value(before.catalog).unwrap()
+    );
+    let requests = server.total();
+    assert_eq!(
+        service.refresh_catalog().await.unwrap_err().code,
+        ErrorCode::Shutdown
+    );
+    assert_eq!(server.total(), requests);
+}
+
 #[tokio::test]
 async fn startup_fetches_metadata_only_and_installation_survives_its_owner() {
     let (directory, catalog, server) = hosted_fixture();

@@ -198,18 +198,26 @@ export class TranslationClient {
 			if (stopped) return;
 			stopped = true;
 			this.subscriptions.delete(stop);
-			unlisten();
+			try {
+				unlisten();
+			} catch (error) {
+				throw normalizeTranslationError(error);
+			}
 		};
-		if (this.disposed) {
-			stop();
-			throw this.disposedError();
-		}
+		const failSetup = (error: unknown): never => {
+			try {
+				stop();
+			} catch {
+				// Preserve the setup error when cleanup also fails.
+			}
+			throw normalizeTranslationError(error);
+		};
+		if (this.disposed) failSetup(this.disposedError());
 		this.subscriptions.add(stop);
 		try {
 			deliver(await this.status());
 		} catch (error) {
-			stop();
-			throw normalizeTranslationError(error);
+			failSetup(error);
 		}
 		return stop;
 	}

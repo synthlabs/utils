@@ -251,6 +251,75 @@ test('initial query failure cleans up listeners and preserves the normalized err
 	assert.equal(h.removed, 1);
 });
 
+test('initial query error wins when listener cleanup also fails', async () => {
+	const details = { source: 'rus', target: 'eng' };
+	const primary = { code: 'busy', message: 'primary query failure', details };
+	const h = harness({
+		invoke: () => Promise.reject(primary),
+		unlisten: () => {
+			throw new Error('cleanup failed');
+		}
+	});
+	await assert.rejects(
+		h.client.watchState(() => {}),
+		(error) => {
+			assert.ok(error instanceof h.TranslationClientError);
+			assert.equal(error.code, 'busy');
+			assert.equal(error.message, primary.message);
+			assert.equal(error.details, details);
+			assert.equal(error.cause, primary);
+			return true;
+		}
+	);
+	await h.client.dispose();
+	assert.equal(h.removed, 1);
+	assert.equal(h.listeners, 0);
+});
+
+test('disposal error wins when a late listener cleanup also fails', async () => {
+	const registration = deferred();
+	const h = harness({
+		listen: () => registration.promise,
+		unlisten: () => {
+			throw new Error('cleanup failed');
+		}
+	});
+	const subscription = h.client.watchState(() => assert.fail('disposed listener must stay silent'));
+	const rejected = assert.rejects(subscription, (error) => {
+		assert.ok(error instanceof h.TranslationClientError);
+		assert.equal(error.code, 'disposed');
+		return true;
+	});
+	await h.client.dispose();
+	registration.resolve();
+	await rejected;
+	await h.client.dispose();
+	assert.equal(h.removed, 1);
+	assert.equal(h.listeners, 0);
+	assert.equal(h.calls.length, 0);
+});
+
+test('standalone listener cleanup errors are normalized and cleanup stays idempotent', async () => {
+	const cleanup = new Error('cleanup failed');
+	const h = harness({
+		unlisten: () => {
+			throw cleanup;
+		}
+	});
+	const stop = await h.client.watchState(() => {});
+	assert.throws(stop, (error) => {
+		assert.ok(error instanceof h.TranslationClientError);
+		assert.equal(error.code, 'ipc');
+		assert.equal(error.message, cleanup.message);
+		assert.equal(error.cause, cleanup);
+		return true;
+	});
+	stop();
+	await h.client.dispose();
+	assert.equal(h.removed, 1);
+	assert.equal(h.listeners, 0);
+});
+
 test('listener failure and disposal during snapshot collection are handled', async () => {
 	const failed = harness({ listen: () => Promise.reject('webview closed') });
 	await assert.rejects(

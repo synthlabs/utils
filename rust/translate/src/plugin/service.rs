@@ -65,6 +65,20 @@ pub struct TranslationService {
     shutdown: watch::Sender<bool>,
 }
 
+struct CatalogRefreshGuard<'a> {
+    service: &'a TranslationService,
+}
+
+impl Drop for CatalogRefreshGuard<'_> {
+    fn drop(&mut self) {
+        let mut state = self.service.lock();
+        if state.catalog.refreshing {
+            state.catalog.refreshing = false;
+            self.service.publish(&mut state);
+        }
+    }
+}
+
 impl TranslationService {
     pub fn new(root: PathBuf, config: PluginConfig) -> Arc<Self> {
         Self::with_root(Ok(root), config)
@@ -304,14 +318,19 @@ impl TranslationService {
         Ok(self.snapshot())
     }
 
+    /// Dropping an active refresh clears its status and preserves the previous metadata.
     pub async fn refresh_catalog(&self) -> Result<CatalogStateDto, ServiceError> {
         let _refresh = self.refresh.lock().await;
         let resources = self.resources()?;
         {
             let mut state = self.lock();
+            if state.phase == ServicePhase::Shutdown {
+                return Err(Self::phase_error(&state));
+            }
             state.catalog.refreshing = true;
             self.publish(&mut state);
         }
+        let _refresh_state = CatalogRefreshGuard { service: self };
         let mut shutdown = self.shutdown.subscribe();
         let result = if *shutdown.borrow() {
             return Err(ServiceError::new(
@@ -326,6 +345,9 @@ impl TranslationService {
             }
         };
         let mut state = self.lock();
+        if state.phase == ServicePhase::Shutdown {
+            return Err(Self::phase_error(&state));
+        }
         state.catalog.refreshing = false;
         match result {
             Ok(load) => {

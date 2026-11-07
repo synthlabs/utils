@@ -98,6 +98,11 @@ returns an idempotent cleanup function and also cleans up when disposed during
 asynchronous subscription setup. `workload` is a point-in-time snapshot; queue
 counts are available through `status()` rather than a workload event stream.
 
+If subscription setup and listener cleanup both fail, the original normalized
+setup error takes precedence. Disposal during listener registration preserves the
+`disposed` error even when cleanup fails. Standalone cleanup failures are normalized
+as `TranslationClientError`, and cleanup remains idempotent.
+
 ## Manage models
 
 ```ts
@@ -153,6 +158,12 @@ operations preserve `busy`, recovery errors, and unmanaged-data protections.
 Also available: `verifyModel(pair)`, `discardDownloads(pair)`, and explicit
 `refreshCatalog()`. An explicit refresh rejects when no usable catalog is available;
 cached fallback resolves with its refresh error attached.
+
+For native callers, dropping or aborting a `refresh_catalog()` future cancels its
+active refresh, clears `refreshing`, and retains the previous catalog, freshness,
+and error for an explicit retry. Dropping a caller waiting for the refresh lock
+leaves the active refresh unchanged. Shutdown clears refresh status and remains
+terminal.
 
 ## Native Rust access and exit
 
