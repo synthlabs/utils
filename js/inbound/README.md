@@ -43,6 +43,14 @@ other log targets intact. Panics are captured independently.
 Supply an `onerror` callback using `logHandledError` when the host owns failures;
 the wizard displays collection/submission failures with retry controls.
 
+Report uploads have a ten-minute deadline and never resubmit automatically.
+`ReportWizard` supports canceling a send and cancels when it is destroyed. The
+form and selected error remain available after a failed or canceled attempt;
+delivery may be uncertain, so resubmission requires an explicit action.
+`submitReport(input, { signal })` exposes the same cancellation to custom UIs.
+Include `register_submission` and `cancel_submission` from the current
+`inbound-build::COMMANDS` when registering plugin permissions.
+
 Set `submitSnapshot` to send the prefilled error that the user reviewed. The
 optional `ReportInput.error` is preferred over the latest native error; omitted
 or null values preserve the legacy lookup. `include.error=false` always omits the

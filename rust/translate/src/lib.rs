@@ -28,3 +28,23 @@ pub use store::*;
 pub use types::*;
 #[cfg(feature = "workload")]
 pub use workload::*;
+#[cfg(any(feature = "catalog-http", feature = "model-downloads"))]
+fn http_retry_after(headers: &reqwest::header::HeaderMap) -> std::time::Duration {
+    use std::time::{Duration, SystemTime};
+    headers
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| {
+            value
+                .parse::<u64>()
+                .ok()
+                .map(Duration::from_secs)
+                .or_else(|| {
+                    httpdate::parse_http_date(value)
+                        .ok()
+                        .map(|date| date.duration_since(SystemTime::now()).unwrap_or_default())
+                })
+        })
+        .filter(|delay| std::time::Instant::now().checked_add(*delay).is_some())
+        .unwrap_or_default()
+}

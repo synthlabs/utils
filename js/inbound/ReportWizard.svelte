@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onDestroy, onMount, untrack, type Snippet } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
-	import Logger from '$utils/log';
+	import { logHandledError } from './capture';
 	import {
 		inboundCapabilities,
 		previewBuild,
@@ -26,7 +26,7 @@
 		prefilledError = null,
 		onclose = () => {},
 		submitSnapshot = false,
-		onerror = (error: unknown) => Logger.error('inbound report failed', error),
+		onerror = (error: unknown) => logHandledError(error, 'inbound.report'),
 		copy = {},
 		class: className = '',
 		header,
@@ -57,6 +57,7 @@
 	let error = $state<ErrorContext | null>(initialError);
 	let loading = $state(true);
 	let busy = $state(false);
+	let submission: AbortController | undefined;
 	let failure = $state<{
 		step: PreviewStep | 'capabilities';
 		message: string;
@@ -111,6 +112,7 @@
 	});
 	onDestroy(() => {
 		disposed = true;
+		submission?.abort();
 		request++;
 	});
 	$effect(() => {
@@ -126,22 +128,27 @@
 		busy = true;
 		wizard.errorMessage = '';
 		wizard.step = 'sending';
+		submission = new AbortController();
 		try {
-			await submitReport({
-				discord_user: wizard.discordUser.trim() || null,
-				message: wizard.message.trim(),
-				include: { ...wizard.include },
-				...(submitSnapshot ? { error: initialError } : {})
-			});
+			await submitReport(
+				{
+					discord_user: wizard.discordUser.trim() || null,
+					message: wizard.message.trim(),
+					include: { ...wizard.include },
+					...(submitSnapshot ? { error: initialError } : {})
+				},
+				{ signal: submission.signal }
+			);
 			if (!disposed) wizard.step = 'done';
 		} catch (error) {
-			onerror(error);
+			if (!submission.signal.aborted) onerror(error);
 			if (!disposed) {
 				wizard.errorMessage = errorDetails(error);
 				wizard.step = 'failed';
 			}
 		} finally {
 			busy = false;
+			submission = undefined;
 		}
 	}
 
@@ -344,6 +351,12 @@
 		<p class="text-muted-foreground grid flex-1 place-items-center text-sm" role="status">
 			{text.sending}
 		</p>
+		{@render button({
+			kind: 'cancel',
+			label: text.cancelSending,
+			disabled: false,
+			onclick: () => submission?.abort()
+		})}
 	{:else if wizard.step === 'done'}
 		<section class="grid flex-1 place-items-center gap-3 text-center" role="status">
 			<div>

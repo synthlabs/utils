@@ -59,7 +59,7 @@ impl InstallError {
                     || error.is_request()
                     || error.is_decode()
             }
-            Self::Http(status) => matches!(status, 408 | 500 | 502 | 503 | 504),
+            Self::Http(status) => matches!(status, 408 | 429 | 500 | 502 | 503 | 504),
             _ => false,
         }
     }
@@ -272,6 +272,7 @@ struct Session {
 pub struct ModelInstaller {
     store: ModelStore,
     client: reqwest::Client,
+    retry_wait: std::sync::Mutex<Duration>,
     #[cfg(any(test, feature = "tauri-test"))]
     test_origin: Option<String>,
     #[cfg(test)]
@@ -306,6 +307,7 @@ impl ModelInstaller {
         Ok(Self {
             store,
             client,
+            retry_wait: Default::default(),
             #[cfg(any(test, feature = "tauri-test"))]
             test_origin: None,
             #[cfg(test)]
@@ -478,6 +480,7 @@ impl ModelInstaller {
                         p.attempt = attempt;
                         p.file_download_bytes = 0;
                     });
+                    *self.retry_wait.lock().unwrap() = Duration::ZERO;
                     match self.download(session.clone(), file.clone()).await {
                         Ok(()) => break,
                         Err(error) if error.retryable() && attempt < ATTEMPTS => {
@@ -490,6 +493,7 @@ impl ModelInstaller {
                             let delay = Duration::from_secs(u64::from(attempt));
                             #[cfg(test)]
                             let delay = self.retry_unit * attempt;
+                            let delay = delay.max(*self.retry_wait.lock().unwrap());
                             tokio::select! { biased; _ = session.control.cancelled() => return Err(InstallError::Cancelled), _ = tokio::time::sleep(delay) => {} }
                         }
                         Err(error) => return Err(error),
@@ -567,6 +571,7 @@ impl ModelInstaller {
             .send();
         let mut response = tokio::select! { biased; _ = session.control.cancelled() => return Err(InstallError::Cancelled), response = request => response.map_err(InstallError::Transport)? };
         if response.status() != reqwest::StatusCode::OK {
+            *self.retry_wait.lock().unwrap() = crate::http_retry_after(response.headers());
             return Err(InstallError::Http(response.status().as_u16()));
         }
         if response

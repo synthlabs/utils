@@ -11,13 +11,14 @@ resolver = "2"
 
 [features]
 default = []
-catalog-http = ["dep:reqwest"]
-model-downloads = ["dep:reqwest", "dep:tokio", "dep:zstd"]
+catalog-http = ["dep:reqwest", "dep:httpdate"]
+model-downloads = ["dep:reqwest", "dep:tokio", "dep:zstd", "dep:httpdate"]
 workload = ["dep:tokio"]
 tauri-plugin = ["catalog-http", "model-downloads", "workload", "dep:tauri", "dep:specta", "dep:translate-build"]
 tauri-test = ["tauri-plugin", "tauri/test"]
 
 [dependencies]
+httpdate = { version = "1", optional = true }
 fxtranslate = { version = "=0.5.0", default-features = false, features = ["portable", "lean-embed", "mmap", "threads"] }
 reqwest = { version = "0.12.28", optional = true, default-features = false, features = ["rustls-tls"] }
 serde = { version = "1", features = ["derive"] }

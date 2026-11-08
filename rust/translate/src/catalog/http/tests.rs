@@ -90,6 +90,8 @@ impl Server {
 
     fn client(&self, root: &Path) -> CatalogClient {
         CatalogClient {
+            retry_wait: Default::default(),
+            request_gate: None,
             cache: CatalogCache::open(root).unwrap(),
             client: reqwest::Client::builder()
                 .redirect(reqwest::redirect::Policy::none())
@@ -244,4 +246,22 @@ async fn failed_publication_keeps_prior_pointer_and_reports_refresh_error() {
     assert_eq!(result.freshness, CatalogFreshness::Cached);
     assert!(result.refresh_error.is_some());
     assert_eq!(result.snapshot.sha256(), first.sha256());
+}
+
+#[tokio::test]
+async fn retryable_catalog_responses_keep_server_waits_separate_from_bad_catalogs() {
+    let directory = tempfile::tempdir().unwrap();
+    let server = Server::new(vec![
+        b"HTTP/1.1 429 Busy\r\nRetry-After: 120\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            .to_vec(),
+        response("404 Not found", b""),
+        response("200 OK", b"invalid catalog"),
+    ]);
+    let client = server.client(directory.path());
+    assert!(client.refresh().await.is_err());
+    assert_eq!(client.retry_wait(), Some(Duration::from_secs(120)));
+    assert!(client.refresh().await.is_err());
+    assert_eq!(client.retry_wait(), None);
+    assert!(client.refresh().await.is_err());
+    assert_eq!(client.retry_wait(), None);
 }

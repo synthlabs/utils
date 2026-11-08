@@ -37,6 +37,28 @@ export function capturedErrors(): Promise<CapturedError[]> {
 	return invoke('plugin:inbound|captured_errors');
 }
 
-export function submitReport(input: ReportInput): Promise<void> {
-	return invoke('plugin:inbound|submit', { input });
+export async function submitReport(
+	input: ReportInput,
+	options: { signal?: AbortSignal } = {}
+): Promise<void> {
+	if (!options.signal) return invoke('plugin:inbound|submit', { input });
+	const id = crypto.randomUUID();
+	await invoke('plugin:inbound|register_submission', { id });
+	const cancel = () => invoke<void>('plugin:inbound|cancel_submission', { id });
+	if (options.signal.aborted) {
+		await cancel();
+		throw new DOMException(
+			'Report submission canceled. Delivery could not be confirmed; check before sending again.',
+			'AbortError'
+		);
+	}
+	const onAbort = () => {
+		void cancel().catch(() => {});
+	};
+	options.signal.addEventListener('abort', onAbort, { once: true });
+	try {
+		await invoke('plugin:inbound|submit', { input, id });
+	} finally {
+		options.signal.removeEventListener('abort', onAbort);
+	}
 }

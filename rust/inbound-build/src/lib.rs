@@ -9,6 +9,8 @@ pub const COMMANDS: &[&str] = &[
     "preview_config",
     "preview_error",
     "captured_errors",
+    "register_submission",
+    "cancel_submission",
     "submit",
 ];
 

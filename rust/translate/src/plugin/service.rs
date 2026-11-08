@@ -57,6 +57,8 @@ struct State {
 /// One app-owned service. Construction is local and does not start work.
 pub struct TranslationService {
     config: PluginConfig,
+    catalog_timeouts: (std::time::Duration, std::time::Duration),
+    catalog_request_gate: Option<CatalogRequestGate>,
     root: Result<PathBuf, ServiceError>,
     state: Mutex<State>,
     lifecycle: AsyncMutex<()>,
@@ -88,6 +90,30 @@ impl TranslationService {
         root: Result<PathBuf, ServiceError>,
         config: PluginConfig,
     ) -> Arc<Self> {
+        Self::with_root_and_timeouts(
+            root,
+            config,
+            (
+                std::time::Duration::from_secs(15),
+                std::time::Duration::from_secs(30),
+            ),
+        )
+    }
+
+    pub(crate) fn with_root_and_timeouts(
+        root: Result<PathBuf, ServiceError>,
+        config: PluginConfig,
+        catalog_timeouts: (std::time::Duration, std::time::Duration),
+    ) -> Arc<Self> {
+        Self::with_root_and_network(root, config, catalog_timeouts, None)
+    }
+
+    pub(crate) fn with_root_and_network(
+        root: Result<PathBuf, ServiceError>,
+        config: PluginConfig,
+        catalog_timeouts: (std::time::Duration, std::time::Duration),
+        catalog_request_gate: Option<CatalogRequestGate>,
+    ) -> Arc<Self> {
         let state = State {
             revision: 0,
             models_revision: 0,
@@ -106,6 +132,8 @@ impl TranslationService {
         let changes = watch::channel(Self::snapshot_from(&state)).0;
         Arc::new(Self {
             config,
+            catalog_timeouts,
+            catalog_request_gate,
             root,
             state: Mutex::new(state),
             lifecycle: AsyncMutex::new(()),
@@ -247,10 +275,14 @@ impl TranslationService {
         }
         let root = self.root.clone();
         let config = self.config.clone();
+        let catalog_timeouts = self.catalog_timeouts;
+        let catalog_request_gate = self.catalog_request_gate.clone();
         let opened = tokio::task::spawn_blocking(move || -> Result<_, ServiceError> {
             let root = root?;
             let store = ModelStore::open(&root)?;
-            let catalog = CatalogClient::open(&root)?;
+            let catalog =
+                CatalogClient::open_with_timeouts(&root, catalog_timeouts.0, catalog_timeouts.1)?
+                    .with_request_gate(catalog_request_gate);
             let installer = ModelInstaller::new(store.clone())?;
             #[cfg(any(test, feature = "tauri-test"))]
             let (catalog, installer) = if let Some(origin) = &config.test_origin {
@@ -311,8 +343,34 @@ impl TranslationService {
         }
         let service = Arc::downgrade(self);
         tokio::spawn(async move {
-            if let Some(service) = service.upgrade() {
+            let mut attempt = 0u32;
+            while let Some(service) = service.upgrade() {
                 let _ = service.refresh_catalog().await;
+                let retry = service
+                    .resources()
+                    .ok()
+                    .and_then(|resources| resources.catalog.retry_wait());
+                let Some(server_wait) = retry else {
+                    break;
+                };
+                let jitter = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .subsec_millis() as u64;
+                let delay = std::time::Duration::from_secs(
+                    15u64
+                        .saturating_mul(2u64.saturating_pow(attempt.min(5)))
+                        .min(300),
+                )
+                .saturating_add(std::time::Duration::from_millis(jitter))
+                .max(server_wait);
+                attempt = attempt.saturating_add(1);
+                let mut shutdown = service.shutdown.subscribe();
+                if *shutdown.borrow() {
+                    break;
+                }
+                drop(service);
+                tokio::select! { _ = shutdown.changed() => break, _ = tokio::time::sleep(delay) => {} }
             }
         });
         Ok(self.snapshot())
@@ -349,6 +407,7 @@ impl TranslationService {
             return Err(Self::phase_error(&state));
         }
         state.catalog.refreshing = false;
+        let retryable = resources.catalog.retry_wait().is_some();
         match result {
             Ok(load) => {
                 state.catalog.catalog = Some((&load.snapshot).into());
@@ -356,11 +415,13 @@ impl TranslationService {
                     CatalogFreshness::Fresh => FreshnessDto::Fresh,
                     CatalogFreshness::Cached => FreshnessDto::Cached,
                 });
-                state.catalog.error = load.refresh_error.map(Into::into);
+                state.catalog.error = load
+                    .refresh_error
+                    .map(|error| catalog_issue(error, retryable));
                 state.models_revision += 1;
             }
             Err(error) => {
-                let error = ServiceError::from(error);
+                let error = catalog_issue(error, retryable);
                 state.catalog.error = Some(error.clone());
                 self.publish(&mut state);
                 return Err(error);
@@ -781,3 +842,11 @@ fn wrong_owner() -> ServiceError {
 
 #[cfg(test)]
 mod tests;
+
+fn catalog_issue(error: CatalogError, retryable: bool) -> ServiceError {
+    let mut error = ServiceError::from(error);
+    error
+        .details
+        .insert("retryable".into(), retryable.to_string());
+    error
+}

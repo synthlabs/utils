@@ -24,6 +24,7 @@ export const defaultWizardCopy = {
 	notProvided: '(not provided)',
 	none: 'none',
 	sending: 'Sending report…',
+	cancelSending: 'Cancel sending',
 	done: 'Report sent',
 	doneHelp: 'Thanks. A private Discord thread was created for this report.',
 	failed: 'Report failed',
@@ -40,7 +41,7 @@ export const defaultWizardCopy = {
 };
 export type WizardCopy = typeof defaultWizardCopy;
 export type WizardAction = {
-	kind: 'back' | 'next' | 'send' | 'close' | 'retry';
+	kind: 'back' | 'next' | 'send' | 'close' | 'retry' | 'cancel';
 	label: string;
 	disabled: boolean;
 	onclick: () => void;

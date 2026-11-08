@@ -232,7 +232,7 @@ for model in loaded.snapshot.models() {
 ```
 
 Fetching requires a caller-provided Tokio runtime. HTTPS requests have a 15-second
-timeout each, no redirects, and byte limits of 16 KiB for the pointer and 4 MiB for
+connection timeout and a 30-second total timeout, no redirects, and byte limits of 16 KiB for the pointer and 4 MiB for
 the snapshot. URLs must match the published same-origin snapshot/object layout.
 Only schema 1, desktop-eligible Russian↔English entries are normalized; unrelated
 language entries are ignored. Unsupported filters, ambiguous pairs, unsafe
@@ -369,7 +369,7 @@ not follow redirects, and request identity encoding with automatic HTTP content
 decompression disabled. Downloads stream through bounded worker queues. Each file
 gets at most three attempts, including the first, with 1- then 2-second waits, a
 15-second connection timeout, and a 30-second read-inactivity timeout. There is no
-whole-transfer deadline. Transport/read failures and HTTP 408/500/502/503/504 retry;
+whole-transfer deadline. Transport/read failures and HTTP 408/429/500/502/503/504 retry;
 other statuses, integrity, decompression, and filesystem failures stop. Byte-range
 resumption is not implemented.
 
@@ -430,8 +430,16 @@ and native `TranslationExt` accessor. The feature includes `workload`,
 `catalog-http`, and `model-downloads`; default builds remain Tauri-free. Rust and
 frontend callers share one service, queue, cache, and model store.
 
-The integration starts local initialization and one background metadata refresh,
-never automatic model downloads. Store failures expose unavailable status without
+The integration starts local initialization and a background metadata refresh,
+with transient failures retried from 15 seconds up to a five-minute delay. Server
+`Retry-After` delays are respected for catalog requests and model downloads.
+Catalog requests default to a 15-second connection timeout and a 30-second total
+timeout. `CatalogClient::open_with_timeouts` and
+`plugin::init_with_catalog_timeouts` provide startup configuration.
+`plugin::init_with_catalog_network` additionally accepts a `CatalogRequestGate`
+whose returned guard is held for each HTTP request, including body reads; a host
+can use it to share its background request budget. These APIs never start
+automatic model downloads. Store failures expose unavailable status without
 failing application setup. Explicit workload release waits for engines and leases
 and leaves translation paused until explicit resume. App exit signals cancellation
 without waiting for cleanup. `WorkloadManager::request_shutdown()` provides the

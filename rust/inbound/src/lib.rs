@@ -6,6 +6,7 @@ use tauri::{plugin::TauriPlugin, AppHandle, Manager, Runtime, State};
 pub mod capture;
 mod collect;
 mod report;
+mod submission;
 mod transport;
 
 pub use report::{
@@ -28,6 +29,7 @@ pub struct InboundState<R: Runtime> {
     build: BuildInfo,
     transport: Arc<dyn Transport>,
     scrubber: Option<Arc<dyn Scrubber<R>>>,
+    submissions: submission::Submissions,
 }
 
 impl<R: Runtime> InboundState<R> {
@@ -39,6 +41,7 @@ impl<R: Runtime> InboundState<R> {
             build: config.build,
             transport,
             scrubber: config.scrubber,
+            submissions: Default::default(),
         }
     }
 
@@ -58,11 +61,25 @@ pub fn init<R: Runtime>(config: Config<R>) -> TauriPlugin<R> {
             preview_error,
             captured_errors,
             submit,
+            register_submission,
+            cancel_submission,
         ])
         .setup(move |app, _api| {
             app.manage(InboundState::new(config));
             capture::install(app.clone());
             Ok(())
+        })
+        .on_event(|app, event| {
+            if let tauri::RunEvent::WindowEvent {
+                label,
+                event: tauri::WindowEvent::Destroyed,
+                ..
+            } = event
+            {
+                app.state::<InboundState<R>>()
+                    .submissions
+                    .cancel_owner(label);
+            }
         })
         .build()
 }
@@ -121,8 +138,10 @@ fn captured_errors() -> Vec<capture::CapturedError> {
 #[tauri::command]
 async fn submit<R: Runtime>(
     app: AppHandle<R>,
+    window: tauri::Window<R>,
     state: State<'_, InboundState<R>>,
     input: ReportInput,
+    id: Option<String>,
 ) -> Result<(), String> {
     let system = input.include.system.then(collect::system);
     let config = if input.include.config {
@@ -152,11 +171,29 @@ async fn submit<R: Runtime>(
         }
     }
 
-    state
-        .transport
-        .submit(&report, attachments)
-        .await
-        .map_err(|err| err.to_string())
+    let send = state.transport.submit(&report, attachments);
+    match id {
+        Some(id) => state.submissions.run(window.label(), &id, send).await,
+        None => submission::bounded(send).await,
+    }
+}
+
+#[tauri::command]
+fn register_submission<R: Runtime>(
+    window: tauri::Window<R>,
+    state: State<'_, InboundState<R>>,
+    id: String,
+) -> Result<(), String> {
+    state.submissions.register(window.label(), &id)
+}
+
+#[tauri::command]
+fn cancel_submission<R: Runtime>(
+    window: tauri::Window<R>,
+    state: State<'_, InboundState<R>>,
+    id: String,
+) {
+    state.submissions.cancel(window.label(), &id);
 }
 
 fn scrub_config<R: Runtime>(

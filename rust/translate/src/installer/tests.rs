@@ -24,6 +24,7 @@ use crate::{
 #[derive(Clone)]
 pub(crate) enum Reply {
     Body(u16, Vec<u8>),
+    RateLimited,
     Chunked(Vec<u8>),
     Length(Vec<u8>, u64),
     Stalled(Vec<u8>),
@@ -92,6 +93,8 @@ impl Server {
                                 }
                             };
                             match reply {
+                                Reply::RateLimited => { let _ = stream.write_all(b"HTTP/1.1 429 Busy\r\nRetry-After: 1\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"); }
+
                                 Reply::Body(status, body) => {
                                     let _ = write!(stream, "HTTP/1.1 {status} fixture\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
                                     let _ = stream.write_all(&body);
@@ -395,7 +398,22 @@ async fn transient_failure_recovers_but_permanent_http_and_integrity_failures_do
         .unwrap();
     assert_eq!(server.count(&target), 2);
     store.remove(RU_EN).unwrap();
-    for status in [301, 401, 403, 404, 429] {
+    server.replies(
+        &target,
+        vec![
+            Reply::RateLimited,
+            Reply::Body(200, objects[&target].clone()),
+        ],
+    );
+    let retry_started = Instant::now();
+    installer
+        .install(plan(&catalog), InstallControl::new())
+        .await
+        .unwrap();
+    assert!(retry_started.elapsed() >= Duration::from_secs(1));
+    assert_eq!(server.count(&target), 4);
+    store.remove(RU_EN).unwrap();
+    for status in [301, 401, 403, 404] {
         let count = server.count(&target);
         server.replies(&target, vec![Reply::Body(status, Vec::new())]);
         assert!(

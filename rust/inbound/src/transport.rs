@@ -19,7 +19,11 @@ impl WebhookTransport {
     pub fn new(app: AppId) -> Self {
         Self {
             app,
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(15))
+                .timeout(crate::submission::SUBMISSION_TIMEOUT)
+                .build()
+                .expect("valid report HTTP client"),
         }
     }
 }
@@ -178,7 +182,11 @@ impl Transport for WebhookTransport {
             .multipart(form)
             .send()
             .await
-            .map_err(|err| format!("failed to submit report: {err}"))?;
+            .map_err(|error| if error.is_timeout() {
+                "Report submission timed out. Delivery could not be confirmed; check before sending again.".to_owned()
+            } else {
+                "Could not submit the report. Delivery could not be confirmed; check your connection before trying again.".to_owned()
+            })?;
 
         if response.status().is_success() {
             return Ok(());

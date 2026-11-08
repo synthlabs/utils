@@ -24,6 +24,27 @@ pub trait TranslationExt<R: Runtime>: Manager<R> {
 impl<R: Runtime, T: Manager<R>> TranslationExt<R> for T {}
 
 pub fn init<R: Runtime>(config: PluginConfig) -> TauriPlugin<R> {
+    init_with_catalog_timeouts(
+        config,
+        std::time::Duration::from_secs(15),
+        std::time::Duration::from_secs(30),
+    )
+}
+
+pub fn init_with_catalog_timeouts<R: Runtime>(
+    config: PluginConfig,
+    connect: std::time::Duration,
+    request: std::time::Duration,
+) -> TauriPlugin<R> {
+    init_with_catalog_network(config, connect, request, None)
+}
+
+pub fn init_with_catalog_network<R: Runtime>(
+    config: PluginConfig,
+    connect: std::time::Duration,
+    request: std::time::Duration,
+    gate: Option<crate::CatalogRequestGate>,
+) -> TauriPlugin<R> {
     tauri::plugin::Builder::new("translate")
         .invoke_handler(commands::handler())
         .setup(move |app, _| {
@@ -33,7 +54,8 @@ pub fn init<R: Runtime>(config: PluginConfig) -> TauriPlugin<R> {
                     .map(|path| path.join("translate"))
                     .map_err(|error| ServiceError::new(ErrorCode::Io, error.to_string()))
             });
-            let service = TranslationService::with_root(root, config);
+            let service =
+                TranslationService::with_root_and_network(root, config, (connect, request), gate);
             app.manage(service.clone());
             tauri::async_runtime::spawn(bridge(app.clone(), service.subscribe()));
             service.start_initialization();

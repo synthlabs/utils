@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
 	toastInfo: vi.fn(),
 	toastLoading: vi.fn(),
 	logError: vi.fn(),
+	logWarn: vi.fn(),
 	logInfo: vi.fn()
 }));
 
@@ -34,6 +35,7 @@ vi.mock('svelte-sonner', () => ({
 vi.mock('./log', () => ({
 	default: {
 		error: mocks.logError,
+		warn: mocks.logWarn,
 		info: mocks.logInfo
 	}
 }));
@@ -73,6 +75,42 @@ describe('checkForAppUpdates', () => {
 
 		expect(mocks.toastInfo).not.toHaveBeenCalled();
 		expect(mocks.logInfo).toHaveBeenCalledWith('No update available');
+	});
+
+	it('retries a failed background check quietly and clears status after recovery', async () => {
+		vi.useFakeTimers();
+		try {
+			mocks.check.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(null);
+			const onStatus = vi.fn();
+			const completed = checkForAppUpdates('https://example.com/releases/latest', { onStatus });
+			await vi.advanceTimersByTimeAsync(16000);
+			await completed;
+			expect(mocks.check).toHaveBeenCalledTimes(2);
+			expect(mocks.check).toHaveBeenLastCalledWith({ timeout: 30000 });
+			expect(onStatus).toHaveBeenLastCalledWith({ error: null });
+			expect(mocks.toastError).not.toHaveBeenCalled();
+			expect(mocks.logError).not.toHaveBeenCalled();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('cancels a pending retry without another update request', async () => {
+		vi.useFakeTimers();
+		try {
+			mocks.check.mockRejectedValue(new Error('offline'));
+			const abort = new AbortController();
+			const completed = checkForAppUpdates('https://example.com/releases/latest', {
+				signal: abort.signal
+			});
+			await vi.advanceTimersByTimeAsync(0);
+			abort.abort();
+			await completed;
+			await vi.advanceTimersByTimeAsync(300000);
+			expect(mocks.check).toHaveBeenCalledOnce();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('downloads, installs, and relaunches with the default action', async () => {

@@ -23,6 +23,10 @@ export type UpdateErrorStage = 'check' | 'install' | 'release_notes' | 'external
 export type UpdateErrorHandler = (error: unknown, stage: UpdateErrorStage) => void;
 
 export type CheckForAppUpdatesOptions = {
+	withRequest?: <T>(request: () => Promise<T>) => Promise<T>;
+	onStatus?: (status: { error: unknown | null; retryInMs?: number }) => void;
+	signal?: AbortSignal;
+	requestTimeoutMs?: number;
 	onError?: UpdateErrorHandler;
 	copy?: Partial<UpdateToastCopy>;
 	durationMs?: number;
@@ -136,13 +140,51 @@ export async function checkForAppUpdates(
 	const openReleaseNotes = options.openReleaseNotes ?? openUrl;
 	const updateAction = options.updateAction ?? DEFAULT_UPDATE_ACTION;
 	let update;
-	try {
-		update = await check();
-	} catch (error) {
-		if (!options.onError) throw error;
-		options.onError(error, 'check');
-		return;
+	let attempt = 0;
+	let lastLog = Number.NEGATIVE_INFINITY;
+	while (!options.signal?.aborted) {
+		try {
+			const request = () =>
+				options.signal?.aborted
+					? Promise.resolve(null)
+					: check({ timeout: options.requestTimeoutMs ?? 30000 });
+			update = await (options.withRequest ? options.withRequest(request) : request());
+			if (options.signal?.aborted) {
+				await update?.close?.();
+				return;
+			}
+			options.onStatus?.({ error: null });
+			break;
+		} catch (error) {
+			if (options.signal?.aborted) return;
+			const retryInMs =
+				Math.min(15000 * 2 ** Math.min(attempt++, 5), 300000) + Math.floor(Math.random() * 1000);
+			options.onStatus?.({ error, retryInMs });
+			if (Date.now() - lastLog >= 300000) {
+				Logger.warn(
+					'Update check unavailable; retrying in the background.',
+					{ attempts: attempt },
+					formatError(error)
+				);
+				lastLog = Date.now();
+			}
+			if (options.onError) {
+				options.onError(error, 'check');
+				return;
+			}
+			await new Promise<void>((resolve) => {
+				const finish = () => {
+					clearTimeout(timer);
+					options.signal?.removeEventListener('abort', finish);
+					resolve();
+				};
+				const timer = setTimeout(finish, retryInMs);
+				options.signal?.addEventListener('abort', finish, { once: true });
+				if (options.signal?.aborted) finish();
+			});
+		}
 	}
+	if (options.signal?.aborted) return;
 
 	if (!update) {
 		Logger.info('No update available');

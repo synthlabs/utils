@@ -1,4 +1,7 @@
-use std::{path::Path, time::Duration};
+use std::{future::Future, path::Path, pin::Pin, sync::Arc, time::Duration};
+
+pub type CatalogRequestGate =
+    Arc<dyn Fn() -> Pin<Box<dyn Future<Output = Box<dyn Send>> + Send>> + Send + Sync>;
 
 use super::*;
 
@@ -31,6 +34,8 @@ pub struct CatalogLoad {
 pub struct CatalogClient {
     cache: CatalogCache,
     client: reqwest::Client,
+    retry_wait: std::sync::Mutex<Option<Duration>>,
+    request_gate: Option<CatalogRequestGate>,
     #[cfg(any(test, feature = "tauri-test"))]
     test_origin: Option<String>,
 }
@@ -53,14 +58,25 @@ impl CatalogClient {
     }
 
     pub fn open(store_root: impl AsRef<Path>) -> Result<Self, CatalogError> {
+        Self::open_with_timeouts(store_root, Duration::from_secs(15), Duration::from_secs(30))
+    }
+
+    pub fn open_with_timeouts(
+        store_root: impl AsRef<Path>,
+        connect: Duration,
+        request: Duration,
+    ) -> Result<Self, CatalogError> {
         let client = reqwest::Client::builder()
             .https_only(true)
             .redirect(reqwest::redirect::Policy::none())
-            .timeout(Duration::from_secs(15))
+            .connect_timeout(connect)
+            .timeout(request)
             .build()
             .map_err(http_error)?;
         Ok(Self {
             cache: CatalogCache::open(store_root)?,
+            retry_wait: Default::default(),
+            request_gate: None,
             client,
             #[cfg(any(test, feature = "tauri-test"))]
             test_origin: None,
@@ -77,6 +93,7 @@ impl CatalogClient {
     }
 
     pub async fn refresh(&self) -> Result<CatalogLoad, CatalogError> {
+        *self.retry_wait.lock().unwrap() = None;
         match self.fetch_snapshot().await {
             Ok(snapshot) => match self.cache.commit(&snapshot) {
                 Ok(()) => Ok(CatalogLoad {
@@ -88,6 +105,21 @@ impl CatalogClient {
             },
             Err(error) => self.fallback(error),
         }
+    }
+
+    pub fn retry_wait(&self) -> Option<Duration> {
+        *self.retry_wait.lock().unwrap()
+    }
+    pub fn with_request_gate(mut self, gate: Option<CatalogRequestGate>) -> Self {
+        self.request_gate = gate;
+        self
+    }
+
+    fn request_error(&self, error: reqwest::Error) -> CatalogError {
+        if error.is_timeout() || error.is_connect() || error.is_body() || error.is_decode() {
+            *self.retry_wait.lock().unwrap() = Some(Duration::ZERO);
+        }
+        http_error(error)
     }
 
     fn fallback(&self, error: CatalogError) -> Result<CatalogLoad, CatalogError> {
@@ -112,6 +144,10 @@ impl CatalogClient {
     }
 
     async fn fetch(&self, url: &str, limit: usize) -> Result<Vec<u8>, CatalogError> {
+        let _permit = match &self.request_gate {
+            Some(gate) => Some(gate().await),
+            None => None,
+        };
         #[cfg(any(test, feature = "tauri-test"))]
         let rewritten = self
             .test_origin
@@ -125,8 +161,14 @@ impl CatalogClient {
             .header(reqwest::header::CACHE_CONTROL, "no-cache")
             .send()
             .await
-            .map_err(http_error)?;
+            .map_err(|error| self.request_error(error))?;
         if response.status() != reqwest::StatusCode::OK {
+            if response.status().is_server_error()
+                || matches!(response.status().as_u16(), 408 | 429)
+            {
+                *self.retry_wait.lock().unwrap() =
+                    Some(crate::http_retry_after(response.headers()));
+            }
             return Err(CatalogError::Http(format!(
                 "unexpected HTTP status {}",
                 response.status()
@@ -139,7 +181,11 @@ impl CatalogClient {
             return Err(invalid("catalog response exceeds its size limit"));
         }
         let mut bytes = Vec::new();
-        while let Some(chunk) = response.chunk().await.map_err(http_error)? {
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|error| self.request_error(error))?
+        {
             if chunk.len() > limit - bytes.len() {
                 return Err(invalid("catalog response exceeds its size limit"));
             }
