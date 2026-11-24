@@ -35,13 +35,17 @@
 				<button
 					type="button"
 					class="border-input hover:bg-muted h-8 cursor-pointer rounded-md border px-3 text-xs"
-					onclick={() => (visible = false)}>Dismiss</button
+					onclick={() => (visible = false)}
 				>
+					Dismiss
+				</button>
 				<button
 					type="button"
 					class="bg-primary text-primary-foreground h-8 cursor-pointer rounded-md px-3 text-xs"
-					onclick={() => (wizardOpen = true)}>Report this</button
+					onclick={() => (wizardOpen = true)}
 				>
+					Report this
+				</button>
 			</div>
 		</div>
 	</div>

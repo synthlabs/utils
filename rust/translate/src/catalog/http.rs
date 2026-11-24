@@ -43,12 +43,14 @@ pub struct CatalogClient {
 impl CatalogClient {
     #[cfg(any(all(test, feature = "tauri-plugin"), feature = "tauri-test"))]
     pub(crate) fn with_test_origin(mut self, origin: &str) -> Self {
+        crate::ensure_tls_provider();
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
             reqwest::header::ACCEPT_ENCODING,
             reqwest::header::HeaderValue::from_static("identity"),
         );
         self.client = reqwest::Client::builder()
+            .tls_backend_rustls()
             .https_only(false)
             .default_headers(headers)
             .build()
@@ -66,7 +68,9 @@ impl CatalogClient {
         connect: Duration,
         request: Duration,
     ) -> Result<Self, CatalogError> {
+        crate::ensure_tls_provider();
         let client = reqwest::Client::builder()
+            .tls_backend_rustls()
             .https_only(true)
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(connect)

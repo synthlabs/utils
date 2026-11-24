@@ -146,8 +146,10 @@
 			data-model-action={control.kind}
 			disabled={control.disabled}
 			title={control.title}
-			onclick={control.onclick}>{control.label}</button
+			onclick={control.onclick}
 		>
+			{control.label}
+		</button>
 	{/if}
 {/snippet}
 
@@ -267,8 +269,10 @@
 				type="button"
 				class="justify-self-start underline"
 				aria-label={text.dismissError}
-				onclick={() => controller.dismissError(issue.id)}>{text.dismissError}</button
+				onclick={() => controller.dismissError(issue.id)}
 			>
+				{text.dismissError}
+			</button>
 		</div>
 	{/each}
 	{#if snapshot.notice}<p class="text-sm" role="status" data-model-notice={snapshot.notice.kind}>

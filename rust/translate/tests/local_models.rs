@@ -214,7 +214,12 @@ fn real_artifact_checks_reject_malformed_tokenizers_with_matching_hashes() {
     let bad_vocab = directory.path().join("malformed.spm");
     let malformed = b"not a sentencepiece tokenizer";
     fs::write(&bad_vocab, malformed).unwrap();
-    let checksum = format!("{:x}", Sha256::digest(malformed)).parse().unwrap();
+    let checksum = Sha256::digest(malformed)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>()
+        .parse()
+        .unwrap();
     for fixture in fixtures() {
         for mode in [LoadMode::Lazy, LoadMode::Eager] {
             let mut descriptor = fixture.descriptor(mode);

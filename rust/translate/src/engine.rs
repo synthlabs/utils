@@ -1,7 +1,7 @@
 use std::{
     collections::HashSet,
     fs::File,
-    io,
+    io::{self, Read},
     panic::{catch_unwind, AssertUnwindSafe},
     path::Path,
     sync::Arc,
@@ -80,7 +80,14 @@ pub(crate) fn verify_artifacts(descriptor: &ModelDescriptor) -> Result<(), Trans
                 ));
             }
             let mut digest = Sha256::new();
-            io::copy(&mut file, &mut digest)?;
+            let mut buffer = [0_u8; 64 * 1024];
+            loop {
+                let count = file.read(&mut buffer)?;
+                if count == 0 {
+                    break;
+                }
+                digest.update(&buffer[..count]);
+            }
             Ok(Sha256Digest::from_bytes(digest.finalize().into()))
         };
         let actual = verify().map_err(|error| TranslationError::FileAccess {

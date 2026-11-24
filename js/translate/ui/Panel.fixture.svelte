@@ -16,16 +16,20 @@
 			type="button"
 			data-custom-action={control.kind}
 			disabled={control.disabled}
-			onclick={control.onclick}>{control.label}</button
-		>{/snippet}
+			onclick={control.onclick}
+		>
+			{control.label}
+		</button>{/snippet}
 	{#snippet modelRow(row, controls)}
 		<div data-custom-row>{row.pair?.source} / {row.pair?.target}</div>
 		{#each controls as control (control.kind)}<button
 				type="button"
 				data-custom-row-action={control.kind}
 				disabled={control.disabled}
-				onclick={control.onclick}>{control.label}</button
-			>{/each}
+				onclick={control.onclick}
+			>
+				{control.label}
+			</button>{/each}
 	{/snippet}
 	{#snippet progress(operation, cancel)}
 		<p data-custom-progress>{operation.progress.phase}</p>
@@ -33,7 +37,9 @@
 				type="button"
 				data-custom-cancel
 				disabled={cancel.disabled}
-				onclick={cancel.onclick}>{cancel.label}</button
-			>{/if}
+				onclick={cancel.onclick}
+			>
+				{cancel.label}
+			</button>{/if}
 	{/snippet}
 </ModelManagerPanel>

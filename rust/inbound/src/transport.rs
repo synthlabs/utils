@@ -17,9 +17,11 @@ pub struct WebhookTransport {
 
 impl WebhookTransport {
     pub fn new(app: AppId) -> Self {
+        let _ = rustls::crypto::ring::default_provider().install_default();
         Self {
             app,
             client: reqwest::Client::builder()
+                .tls_backend_rustls()
                 .connect_timeout(std::time::Duration::from_secs(15))
                 .timeout(crate::submission::SUBMISSION_TIMEOUT)
                 .build()

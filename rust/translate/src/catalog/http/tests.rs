@@ -89,11 +89,13 @@ impl Server {
     }
 
     fn client(&self, root: &Path) -> CatalogClient {
+        crate::ensure_tls_provider();
         CatalogClient {
             retry_wait: Default::default(),
             request_gate: None,
             cache: CatalogCache::open(root).unwrap(),
             client: reqwest::Client::builder()
+                .tls_backend_rustls()
                 .redirect(reqwest::redirect::Policy::none())
                 .timeout(Duration::from_secs(2))
                 .no_proxy()

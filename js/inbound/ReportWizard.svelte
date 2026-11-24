@@ -209,8 +209,10 @@
 			class:bg-primary={props.kind !== 'back'}
 			class:text-primary-foreground={props.kind !== 'back'}
 			disabled={props.disabled}
-			onclick={props.onclick}>{props.label}</button
+			onclick={props.onclick}
 		>
+			{props.label}
+		</button>
 	{/if}
 {/snippet}
 
@@ -280,16 +282,15 @@
 		</section>
 	{:else if wizard.step === 'message'}
 		<section class="flex flex-1 flex-col gap-3">
-			<label class="text-sm font-medium" for="inbound-message"
-				>{text.message}
-				<span class="text-muted-foreground font-normal">({text.optional})</span></label
-			>
+			<label class="text-sm font-medium" for="inbound-message">
+				{text.message}
+				<span class="text-muted-foreground font-normal">({text.optional})</span>
+			</label>
 			<textarea
 				id="inbound-message"
 				class="border-input bg-background min-h-32 resize-none rounded-md border p-3 text-sm"
 				bind:value={wizard.message}
-				placeholder={text.messagePlaceholder}
-			></textarea>
+				placeholder={text.messagePlaceholder}></textarea>
 		</section>
 	{:else if isPreview(wizard.step)}
 		{@const step = wizard.step}

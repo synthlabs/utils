@@ -8,7 +8,10 @@ use synth_translate::{
 
 fn catalog() -> CatalogSnapshot {
     let bytes = include_bytes!("fixtures/hosted-catalog-v1.json");
-    let digest = format!("{:x}", Sha256::digest(bytes));
+    let digest: String = Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
     CatalogSnapshot::from_bytes(bytes, &digest).unwrap()
 }
 

@@ -197,6 +197,7 @@ fn setup() -> (
     let server = Server::new(&objects);
     let mut installer = ModelInstaller::new(store.clone()).unwrap();
     installer.client = reqwest::Client::builder()
+        .tls_backend_rustls()
         .retry(reqwest::retry::never())
         .redirect(reqwest::redirect::Policy::none())
         .read_timeout(Duration::from_millis(100))

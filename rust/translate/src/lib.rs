@@ -29,6 +29,11 @@ pub use types::*;
 #[cfg(feature = "workload")]
 pub use workload::*;
 #[cfg(any(feature = "catalog-http", feature = "model-downloads"))]
+pub(crate) fn ensure_tls_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
+#[cfg(any(feature = "catalog-http", feature = "model-downloads"))]
 fn http_retry_after(headers: &reqwest::header::HeaderMap) -> std::time::Duration {
     use std::time::{Duration, SystemTime};
     headers

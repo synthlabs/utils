@@ -282,7 +282,9 @@ pub struct ModelInstaller {
 impl ModelInstaller {
     #[cfg(any(all(test, feature = "tauri-plugin"), feature = "tauri-test"))]
     pub(crate) fn with_test_origin(mut self, origin: &str) -> Self {
+        crate::ensure_tls_provider();
         self.client = reqwest::Client::builder()
+            .tls_backend_rustls()
             .https_only(false)
             .build()
             .unwrap();
@@ -292,7 +294,9 @@ impl ModelInstaller {
 
     /// Builds an HTTP client but performs no requests or background work.
     pub fn new(store: ModelStore) -> Result<Self, InstallError> {
+        crate::ensure_tls_provider();
         let client = reqwest::Client::builder()
+            .tls_backend_rustls()
             .https_only(true)
             .redirect(reqwest::redirect::Policy::none())
             .retry(reqwest::retry::never())
