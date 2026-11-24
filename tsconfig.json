@@ -1,0 +1,15 @@
+{
+	"extends": "./configs/tsconfig.base.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"allowJs": true,
+		"checkJs": true,
+		"types": ["svelte", "node"],
+		"paths": {
+			"$utils/*": ["./js/*"],
+			"$env/static/public": ["./configs/env-static-public-stub.ts"]
+		}
+	},
+	"include": ["configs/**/*.ts", "js/**/*.ts", "js/**/*.svelte", "vitest.config.ts"],
+	"exclude": ["node_modules", "js/**/node_modules", "target"]
+}

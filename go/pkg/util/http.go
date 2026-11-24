@@ -17,7 +17,7 @@ import (
 
 	logpkg "github.com/synthlabs/utils/go/pkg/log"
 
-	"github.com/google/brotli/go/cbrotli"
+	"github.com/andybalholm/brotli"
 )
 
 // NewHTTPServer constructs a HTTP server with provided config
@@ -77,9 +77,7 @@ func DoHTTPRequest(req *http.Request, result interface{}) error {
 	switch resp.Header.Get("Content-Encoding") {
 	case "br":
 		// do br decoding
-		brReader := cbrotli.NewReader(resp.Body)
-		defer brReader.Close()
-		body = brReader
+		body = brotli.NewReader(resp.Body)
 	}
 
 	if resp.StatusCode != http.StatusOK {
