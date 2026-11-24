@@ -3,6 +3,8 @@ name = "inbound"
 version = "0.1.0"
 edition = "2021"
 
+[workspace]
+
 [dependencies]
 async-trait = "0.1"
 flate2 = "1"

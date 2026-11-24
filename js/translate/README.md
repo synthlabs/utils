@@ -307,26 +307,23 @@ cargo run --locked --manifest-path rust/translate/Cargo.toml --features tauri-pl
 Normal app builds and verification do not rewrite it. Windows plugin checks:
 
 ```text
-npm ci --ignore-scripts --prefix js/translate
-node scripts/check-translate-tauri.mjs
-node scripts/check-translate-ui.mjs
+pnpm install --frozen-lockfile
+pnpm test:translate:tauri
+pnpm test:translate:ui
 ```
 
 `--quick` runs plugin unit tests, generated-contract drift, client regressions, and
 TypeScript checks. `--rust-only` excludes frontend/code-generation checks.
 The default runner also checks formatting/Clippy and debug/release core and
-consumer tests. The consumer's Rust build cache stays under this private
-verification package's `node_modules/.cache`, alongside its test dependencies.
+consumer tests. The consumer's Rust build cache stays under root `target/tauri-consumer-target`.
 All routine fixtures are synthetic, use loopback HTTP, and require
 no model downloads. `tauri-test` is a verification feature for mock-runtime and
 loopback fixtures; consuming applications enable `tauri-plugin`.
 
-The independent UI runner checks the existing client regressions, framework-neutral
+The UI runner checks the existing client regressions, framework-neutral
 TypeScript, Svelte types/accessibility diagnostics, controller regressions, and
-mounted panel/custom-presentation tests. Its private Svelte config does not depend
-on a consuming app. UI tests use `.test.mts` to keep them within this standalone
-runner instead of a consuming app's potentially different Vitest version. The
-private verification package uses Vitest 4.1 with its Vite 8 Svelte plugin.
+mounted panel/custom-presentation tests using the root `utils` pnpm workspace and
+the `translate` project in `vitest.config.ts`.
 
 The independent `node scripts/check-translate.mjs` matrix continues to verify all
 Tauri-free feature combinations on Windows, Linux, and macOS. Packaged application

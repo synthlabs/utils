@@ -65,7 +65,7 @@ if (!rustOnly) {
 		crate
 	]);
 	commands.push([process.execPath, ['--test', 'client.test.mjs'], client]);
-	const require = createRequire(join(client, 'package.json'));
+	const require = createRequire(join(root, 'package.json'));
 	commands.push([
 		process.execPath,
 		[require.resolve('typescript/bin/tsc'), '--project', 'tsconfig.json'],
@@ -81,7 +81,7 @@ for (const [command, commandArgs, cwd] of commands) {
 			...process.env,
 			CARGO_TARGET_DIR:
 				cwd === join(crate, 'tests/consumer')
-					? join(client, 'node_modules/.cache/tauri-consumer-target')
+					? join(root, 'target/tauri-consumer-target')
 					: join(crate, 'target')
 		}
 	});

@@ -5,12 +5,5 @@
 		"checkJs": true,
 		"types": ["svelte", "node"]
 	},
-	"include": [
-		"./*.ts",
-		"./*.mts",
-		"./ui/**/*.ts",
-		"./ui/**/*.mts",
-		"./ui/**/*.svelte",
-		"./testing/**/*.ts"
-	]
+	"include": ["./*.ts", "./ui/**/*.ts", "./ui/**/*.svelte", "./testing/**/*.ts"]
 }

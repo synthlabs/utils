@@ -1,0 +1,6 @@
+packages:
+  - .
+  - js/i18n
+
+allowBuilds:
+  esbuild: true

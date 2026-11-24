@@ -3,9 +3,9 @@ module github.com/synthlabs/utils/go
 go 1.25
 
 require (
+	github.com/andybalholm/brotli v1.3.0
 	github.com/charmbracelet/log v0.4.2
 	github.com/go-errors/errors v1.5.1
-	github.com/google/brotli/go/cbrotli v0.0.0-20231129184818-6ba678a7ce0f
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/mitchellh/mapstructure v1.5.0
 	google.golang.org/protobuf v1.31.0
